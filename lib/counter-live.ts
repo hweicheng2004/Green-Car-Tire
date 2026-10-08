@@ -4,6 +4,7 @@ import type { TireRow, WheelRow } from './inventory-clean';
 import { findModels } from './vehicle-lookup';
 import { getFitment } from './fitment-lookup';
 import { syncStatus } from './inventory-sync-store';
+import { explainDbError } from './db-errors';
 import { toCounterTire, toCounterWheel, fitmentToCounter, feesFromSettings, type CounterInventory, type VehicleResult } from './counter-data';
 
 const ago = (iso: string) => {
@@ -17,7 +18,7 @@ export async function liveInventory(db: SupabaseClient): Promise<CounterInventor
     db.from('wheels').select('*').order('diameter').limit(5000),
     db.from('shop_settings').select('key, value'),
   ]);
-  for (const r of [t, w, s]) if (r.error) throw new Error(r.error.message);
+  for (const r of [t, w, s]) if (r.error) throw new Error(explainDbError(r.error));
   let status = 'Inventory not synced yet';
   try {
     const st = await syncStatus(db);

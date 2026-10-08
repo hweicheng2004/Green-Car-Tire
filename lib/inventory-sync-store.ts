@@ -2,6 +2,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from './supabase-admin';
 import { sheetsClient, serviceAccount, SheetsError } from './google-sheets';
+import { explainDbError } from './db-errors';
 import { runSync, syncConfig, type SyncStore, type LastSync } from './inventory-sync';
 
 export function supabaseSyncStore(db: SupabaseClient): SyncStore {
@@ -49,7 +50,7 @@ export async function syncStatus(db = supabaseAdmin()) {
       db.from('inventory_syncs').select(cols).eq('kind', kind).order('id', { ascending: false }).limit(1).maybeSingle(),
       db.from('inventory_syncs').select(cols).eq('kind', kind).eq('status', 'ok').order('id', { ascending: false }).limit(1).maybeSingle(),
     ]);
-    if (latest.error) throw new Error(latest.error.message);
+    if (latest.error) throw new Error(explainDbError(latest.error));
     out[kind] = { latest: latest.data as SyncStatusRow | null, lastOk: lastOk.data as SyncStatusRow | null };
   }
   return out as Record<'tires' | 'wheels', { latest: SyncStatusRow | null; lastOk: SyncStatusRow | null }>;

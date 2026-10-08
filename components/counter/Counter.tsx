@@ -37,7 +37,14 @@ export default function Counter() {
     });
   }, [data]);
 
-  if (error) return <div className="loading">Couldn&apos;t load inventory: {error}</div>;
+  if (error) return (
+    <div className="loading">
+      <div className="setup">
+        <div className="eyebrow">Couldn&apos;t load inventory</div>
+        <p>{error}</p>
+      </div>
+    </div>
+  );
   if (!data) return <div className="loading">Loading inventory…</div>;
   return <div className="app" dangerouslySetInnerHTML={{ __html: COUNTER_MARKUP }} />;
 }

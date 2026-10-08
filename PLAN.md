@@ -41,7 +41,7 @@ The sheet stays the place staff change stock. Supabase is a fast, clean copy the
 
 ## Build order
 
-**Phase 0: accounts (half a day).** Supabase project, GitHub repo, Vercel account, Google Cloud service account for Sheets. Run migrations 001, 002, 003 in the Supabase SQL editor. Run `npm run seed-models` once.
+**Phase 0: accounts (half a day).** Supabase project, GitHub repo, Vercel account, Google Cloud service account for Sheets. Paste `supabase/setup-all.sql` into the Supabase SQL editor and run it (migrations 001 to 004 in one go). Run `npm run seed-models` once.
 
 **Phase 1: inventory into the database (1 to 2 days).** Put tires on one tab and wheels on another, each with one header row. Paste each tab into the importer, fix what it flags in the sheet, re-paste until rejected is zero, run the SQL. Done when the counter's sample sizes can be answered from Supabase.
 
@@ -50,7 +50,7 @@ The sheet stays the place staff change stock. Supabase is a fast, clean copy the
 Setup steps (to demo first, use `demo/demo-inventory.xlsx`: upload it to Google Drive, which turns it into a Google Sheet with Tires and Wheels tabs of made-up stock and 3 deliberately bad rows. `python3 demo/build-demo-sheet.py` rebuilds it):
 1. Google Cloud: create a project, enable the Google Sheets API, create a service account, add a JSON key.
 2. Share the inventory sheet with the service account's email as **Editor** (it writes the "Sync issues" tab).
-3. Run migration `004_inventory_sync.sql` in Supabase.
+3. Run `supabase/setup-all.sql` in Supabase if you haven't (it includes migration 004).
 4. Set the env vars in `.env.example` (Sheets section) in Vercel, deploy.
 5. Open `/sync`, press Sync now, read the "Sync issues" tab, fix rows in the sheet.
 6. Run `supabase/cron-sync.sql` (with your URL and CRON_SECRET filled in) for the 5-minute schedule.

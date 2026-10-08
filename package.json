@@ -8,7 +8,8 @@
     "check-key": "tsx scripts/check-key.ts",
     "seed-models": "tsx scripts/seed-models.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx test/outback.test.ts && tsx test/parse.test.ts && tsx test/db.test.mts && tsx test/client-log.test.ts && tsx test/inventory.test.mts && tsx test/sync.test.mts && tsx test/counter.test.mts"
+    "test": "tsx test/outback.test.ts && tsx test/parse.test.ts && tsx test/db.test.mts && tsx test/client-log.test.ts && tsx test/inventory.test.mts && tsx test/sync.test.mts && tsx test/counter.test.mts && tsx test/setup-sql.test.mts",
+    "setup-sql": "node scripts/build-setup-sql.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

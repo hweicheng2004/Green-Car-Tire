@@ -28,7 +28,7 @@ Deploy to Vercel with no environment variables, or run `npm run dev` locally wit
 2. **Env.** Copy `.env.example` to `.env.local` (Next.js) and `.env` (scripts), and fill in the key and Supabase values.
 3. **Check the key** (2 hits): `npm i && npm run check-key -- 2018 subaru outback`
    It prints the fitment card and saves the raw JSON. Compare the bolt pattern, bore, sizes and offsets to what you know about the car. If any field comes out `?`, send that JSON file back and the mapping in `lib/fitment.ts` gets adjusted.
-4. **Database.** Run `supabase/migrations/001_wheelsize_cache.sql` through `004_inventory_sync.sql`, in order, in the Supabase SQL editor.
+4. **Database.** In Supabase, open SQL Editor > New query, paste all of `supabase/setup-all.sql` (migrations 001 to 004 in one file) and press Run. Safe to run again. After changing a migration, `npm run setup-sql` rebuilds it.
 5. **Load makes and models** (about 120 hits for both markets, once a year; run it on a quiet day): `npm run seed-models`
 6. **Run the app:** `npm run dev`, then open http://localhost:3000/sync. This repo is the Next.js app; deploy it to Vercel as is.
 7. **Sheets sync:** see Phase 2 in `PLAN.md`.

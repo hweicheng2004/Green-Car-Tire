@@ -194,3 +194,5 @@ details.fees summary{cursor:pointer;font:600 11px var(--body);text-transform:upp
 .status a{color:var(--muted)}
 .status a:hover{color:var(--accent)}
 .loading{display:grid;place-items:center;height:100%;color:var(--muted);font:600 14px var(--body)}
+.setup{max-width:560px;margin:16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px;font:400 15px/1.5 var(--body);color:var(--ink)}
+.setup p{margin:0}
