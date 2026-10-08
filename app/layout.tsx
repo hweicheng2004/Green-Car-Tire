@@ -1,11 +1,18 @@
 import type { Metadata } from 'next';
+import './globals.css';
 
-export const metadata: Metadata = { title: 'Green Car Tires counter' };
+export const metadata: Metadata = { title: 'Green Car Tires Counter' };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body style={{ margin: 0, fontFamily: 'system-ui, sans-serif', background: '#f6f7f5', color: '#1b1f1c' }}>{children}</body>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        {/* eslint-disable-next-line @next/next/no-page-custom-font */}
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
+      </head>
+      <body>{children}</body>
     </html>
   );
 }

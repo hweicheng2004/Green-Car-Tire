@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server';
 import { timingSafeEqual } from 'node:crypto';
 import { syncSheetsFromEnv, syncStatus } from '@/lib/inventory-sync-store';
 import { SheetsError } from '@/lib/google-sheets';
+import { isDemo, demoSync } from '@/lib/demo';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -19,6 +20,7 @@ const authorized = (req: Request) => {
 };
 
 export async function POST(req: Request) {
+  if (isDemo()) return NextResponse.json({ error: 'Demo mode: no Google Sheet or Supabase connected, nothing to sync.' }, { status: 409 });
   if (!authorized(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const force = new URL(req.url).searchParams.get('force') === '1';
   try {
@@ -32,6 +34,10 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
+  if (isDemo()) {
+    const { plans } = demoSync();
+    return NextResponse.json({ demo: true, kinds: plans.map(p => ({ kind: p.kind, rows: p.rows.length, qty: p.qty, rejected: p.rejected, warnings: p.warnings })) });
+  }
   try {
     return NextResponse.json(await syncStatus());
   } catch (e) {

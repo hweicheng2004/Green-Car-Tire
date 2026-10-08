@@ -36,8 +36,8 @@ The sheet stays the place staff change stock. Supabase is a fast, clean copy the
 | Sheet cleaner (`lib/inventory-clean.ts`) | Done. Handles messy sizes, load/speed, tread, DOT, season words, set prices, inch bolt patterns, dual-drilled wheels. |
 | Sheet → SQL importer page | Done. Paste or upload, check columns, review flagged rows, copy SQL. |
 | Automatic Sheets sync | Built and tested (fake Google, real Postgres). Needs your Google service account to go live. |
-| Next.js app shell | Builds. `/sync` page shows sync status with a Sync now button. |
-| Counter app wired to real data | Not started (phase 3). |
+| Demo mode | No accounts needed. Deploy with no env vars to show the counter and `/sync` on the demo sheet. |
+| Counter app wired to real data | Built: the prototype screen is the app's home page, fed by `/api/counter/*`. Runs on demo data with no accounts; switches to Supabase + Wheel-Size when `SUPABASE_URL` is set. Live mode is untested against real accounts. |
 
 ## Build order
 
@@ -55,7 +55,7 @@ Setup steps (to demo first, use `demo/demo-inventory.xlsx`: upload it to Google 
 5. Open `/sync`, press Sync now, read the "Sync issues" tab, fix rows in the sheet.
 6. Run `supabase/cron-sync.sql` (with your URL and CRON_SECRET filled in) for the 5-minute schedule.
 
-**Phase 3: counter app on real data (3 to 5 days).** The Next.js shell exists (`app/layout.tsx`, `app/page.tsx` placeholder). Move the prototype screen into the Next.js app. Add `/api/tires?size=` and `/api/wheels?bolt=&bore=`. Swap the sample arrays for the fitment, vehicles, inventory and search-log routes. Fees and distributor links come from `shop_settings`. Done when the prototype's test searches give the same answers on real stock.
+**Phase 3: counter app on real data (mostly built).** The prototype screen is the home page. It loads all stock once from `/api/counter/inventory` (a few hundred rows; filtering stays instant), resolves vehicles through `/api/counter/vehicle` (local model table, then the fitment cache, Wheel-Size only for a new vehicle-year), and logs settled searches to `counter_searches`. Fees and distributor links come from `shop_settings`; edits in the fee panel are kept per counter PC. Left to do once accounts exist: run it against real stock and fitment. Done when the prototype's test searches give the same answers on real stock.
 
 **Phase 4: lock it down (1 day).** Staff sign in (Supabase Auth, or Vercel password protection for a single shared counter login). Keys stay in server env only.
 

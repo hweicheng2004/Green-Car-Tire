@@ -14,6 +14,14 @@ Counter box "18 outback"
        miss → Wheel-Size /v2/search/by_model/ for cdm, then usdm (2 hits) → merge → normalize → cache → return
 ```
 
+## Demo (no accounts)
+
+Deploy to Vercel with no environment variables, or run `npm run dev` locally without a `.env.local`. With no `SUPABASE_URL` the app runs in demo mode:
+
+- `/` is the counter screen (the clickable prototype, now in the app) on sample stock from `demo/demo-inventory.json`, the same cells as the demo Google Sheet, run through the real sheet cleaner. Vehicle fitment is a small built-in sample list (Outback, RAV4, CR-V, Civic, Corolla, F-150, CX-5, Escape).
+- `/sync` shows what a sync of the demo sheet produces, including the "Sync issues" tab.
+- Nothing is saved and no API is called. Set `DEMO_MODE=0` to force live mode, `DEMO_MODE=1` to force demo with accounts set.
+
 ## Setup
 
 1. **Get a key.** Sign up at developer.wheel-size.com. The free sandbox key gives 300 hits/day for testing. Keys are hand-reviewed (a few hours).
@@ -46,6 +54,12 @@ Counter box "18 outback"
 | `app/sync/page.tsx` | Sync status page with Sync now / Sync anyway buttons. |
 | `supabase/migrations/004_inventory_sync.sql` | `inventory_syncs` log and `replace_inventory()` (one transaction per table). |
 | `supabase/cron-sync.sql` | 5-minute schedule from Supabase pg_cron. Run once after deploying. |
+| `components/counter/` | The counter screen: `markup.ts` (layout), `counter.js` (search, fitment math, quotes, keyboard), `Counter.tsx` (loads data). Styles in `app/globals.css`. |
+| `app/api/counter/*` | What the screen calls: `inventory` (stock, fees, status), `vehicle?q=` (shorthand → cached fitment), `size?size=` ("OE on" list). Demo or live. |
+| `lib/counter-data.ts` | The screen's data shapes, and mappers from Supabase rows and Wheel-Size fitment. |
+| `lib/counter-live.ts` | Live data: Supabase inventory and settings, fitment through the cache. |
+| `lib/demo.ts` | Demo mode: sample vehicles, demo sheet inventory, sync preview. |
+| `lib/vehicle-lookup.ts`, `lib/fitment-lookup.ts` | Shorthand → model, and the cached Wheel-Size lookup. Shared by the API routes and the counter. |
 | `importer/` | The Sheet → SQL page. `node scripts/build-importer.mjs` rebuilds `importer/dist/sheet-import.html` after cleaner changes. |
 | `supabase/migrations/003_inventory.sql` | `tires`, `wheels`, `shop_settings` tables. |
 | `scripts/seed-models.ts` | Loads all Canadian and US makes and models for the counter search. |

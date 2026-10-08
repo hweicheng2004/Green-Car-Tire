@@ -2,6 +2,7 @@
 // The button runs the sync on the server, so the Google key and CRON_SECRET never reach the browser.
 import { redirect } from 'next/navigation';
 import { syncSheetsFromEnv, syncStatus, type SyncStatusRow } from '@/lib/inventory-sync-store';
+import { isDemo, demoIssueSheet } from '@/lib/demo';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -50,14 +51,48 @@ function Kind({ name, latest, lastOk }: { name: string; latest: SyncStatusRow | 
   );
 }
 
+// Demo mode: no Google or Supabase. Shows what a sync of the demo sheet produces, including its "Sync issues" tab.
+function DemoSync() {
+  const { plans, sheet } = demoIssueSheet();
+  const head = sheet.findIndex(r => r[0] === 'Tab');
+  const cell = { padding: '6px 8px', borderBottom: '1px solid #dde1dc', textAlign: 'left' as const, verticalAlign: 'top' as const };
+  return (
+    <main style={{ maxWidth: 960, margin: '0 auto', padding: '24px 16px', background: '#f6f7f5', color: '#1b1f1c', minHeight: '100vh' }}>
+      <p style={{ margin: '0 0 12px' }}><a href="/">← Counter</a></p>
+      <h1 style={{ fontSize: 22, margin: '0 0 4px' }}>Inventory sync <span style={{ color: colour.blocked, fontSize: 15 }}>demo mode</span></h1>
+      <p style={{ margin: '0 0 16px', color: '#555', lineHeight: 1.5 }}>
+        No accounts are connected, so the counter is reading the built-in demo sheet (<code>demo/demo-inventory.json</code>, the same cells as
+        the demo Google Sheet) through the real sheet cleaner. Connect Supabase and a Google Sheet to sync live stock every 5 minutes.
+      </p>
+      {plans.map(p => (
+        <section key={p.kind} style={box}>
+          <h2 style={{ fontSize: 17, margin: '0 0 8px' }}>{p.kind === 'tires' ? 'Tires' : 'Wheels'}</h2>
+          <p style={{ margin: 0 }}>{p.rows.length} rows on the counter, {p.qty} on hand. {p.rejected} not synced, {p.warnings} to check.</p>
+        </section>
+      ))}
+      <section style={{ ...box, overflowX: 'auto' }}>
+        <h2 style={{ fontSize: 17, margin: '0 0 8px' }}>&quot;Sync issues&quot; tab, as the sync would write it</h2>
+        <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
+          <thead><tr>{sheet[head].map(h => <th key={h} style={cell}>{h}</th>)}</tr></thead>
+          <tbody>{sheet.slice(head + 1).map((r, i) => (
+            <tr key={i} style={{ color: r[2] === 'Not synced' ? colour.error : undefined }}>{r.map((c, j) => <td key={j} style={cell}>{c}</td>)}</tr>
+          ))}</tbody>
+        </table>
+      </section>
+    </main>
+  );
+}
+
 export default async function SyncPage({ searchParams }: { searchParams: { result?: string } }) {
+  if (isDemo()) return <DemoSync />;
   let status: Awaited<ReturnType<typeof syncStatus>> | null = null, loadError = '';
   try { status = await syncStatus(); } catch (e) { loadError = (e as Error).message; }
   const blocked = status && Object.values(status).some(s => s.latest?.status === 'blocked');
   const btn = { font: 'inherit', padding: '10px 18px', borderRadius: 6, border: '1px solid #1d7a3a', cursor: 'pointer' };
 
   return (
-    <main style={{ maxWidth: 720, margin: '0 auto', padding: '24px 16px' }}>
+    <main style={{ maxWidth: 720, margin: '0 auto', padding: '24px 16px', background: '#f6f7f5', color: '#1b1f1c', minHeight: '100vh' }}>
+      <p style={{ margin: '0 0 12px' }}><a href="/">← Counter</a></p>
       <h1 style={{ fontSize: 22, margin: '0 0 4px' }}>Inventory sync</h1>
       <p style={{ margin: '0 0 16px', color: '#555' }}>
         The counter reads a copy of the Google Sheet, refreshed every 5 minutes. Rows it couldn't read are listed on the
