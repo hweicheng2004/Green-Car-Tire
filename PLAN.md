@@ -47,7 +47,7 @@ The sheet stays the place staff change stock. Supabase is a fast, clean copy the
 
 **Phase 2: automatic sync (code done; setup about an hour).** `POST /api/sync/sheets` reads the tabs with the service account, runs the same cleaner, and replaces each table in one transaction (`replace_inventory`, migration 004). Rejected rows go to a "Sync issues" tab in the sheet. It runs every 5 minutes from Supabase pg_cron (`supabase/cron-sync.sql`), because Vercel's free plan only allows a cron once a day. `/sync` has a Sync now button. Safety: an unchanged sheet costs no database writes; a missing tab, a renamed size column, or a drop of more than half the rows is blocked and the counter keeps the last good data until someone fixes it or presses "Sync anyway". Done when a qty changed in the sheet shows at the counter within 5 minutes.
 
-Setup steps:
+Setup steps (to demo first, use `demo/demo-inventory.xlsx`: upload it to Google Drive, which turns it into a Google Sheet with Tires and Wheels tabs of made-up stock and 3 deliberately bad rows. `python3 demo/build-demo-sheet.py` rebuilds it):
 1. Google Cloud: create a project, enable the Google Sheets API, create a service account, add a JSON key.
 2. Share the inventory sheet with the service account's email as **Editor** (it writes the "Sync issues" tab).
 3. Run migration `004_inventory_sync.sql` in Supabase.
