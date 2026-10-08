@@ -1,0 +1,399 @@
+{
+ "_note": "cdm item is the verbatim Wheel-Size response for 2018 Outback (2026-10-08). usdm 2.5i item rebuilt from a summarized second response (tire_full and rim strings only).",
+ "cdm": [
+  {
+   "slug": "0b29852b19",
+   "name": "3.6i",
+   "body": null,
+   "trim": "3.6i",
+   "trim_scoring": null,
+   "trim_attributes": [],
+   "trim_body_types": [],
+   "trim_levels": [
+    "Limited",
+    "Touring"
+   ],
+   "make": {
+    "slug": "subaru",
+    "name": "Subaru",
+    "name_en": "Subaru"
+   },
+   "model": {
+    "slug": "outback",
+    "name": "Outback",
+    "name_en": "Outback"
+   },
+   "generation": {
+    "slug": "5b5c2e6aac",
+    "name": "BS Facelift",
+    "platform": "",
+    "start": 2018,
+    "end": 2022,
+    "bodies": []
+   },
+   "start_year": 2018,
+   "end_year": 2019,
+   "regions": [
+    "cdm",
+    "medm",
+    "russia",
+    "usdm"
+   ],
+   "technical": {
+    "wheel_fasteners": {
+     "type": "Lug nuts",
+     "thread_size": "M12 x 1.25"
+    },
+    "wheel_tightening_torque": "120 Nm",
+    "stud_holes": 5,
+    "pcd": 114.3,
+    "centre_bore": "56.1",
+    "bolt_pattern": "5x114.3",
+    "rear_axis_stud_holes": null,
+    "rear_axis_pcd": null,
+    "rear_axis_centre_bore": null,
+    "rear_axis_bolt_pattern": "N/A"
+   },
+   "tire_type": "SUV",
+   "wheels": [
+    {
+     "is_stock": true,
+     "showing_fp_only": true,
+     "is_extra_load_tires": false,
+     "is_high_load_tires": false,
+     "is_recommended_for_winter": false,
+     "is_runflat_tires": false,
+     "is_pressed_steel_rims": false,
+     "front": {
+      "rim": "7Jx18 ET55",
+      "rim_diameter": 18.0,
+      "rim_width": 7.0,
+      "rim_offset": 55.0,
+      "tire_full": "225/60R18 100H",
+      "tire": "225/60R18",
+      "load_index": 100,
+      "speed_index": "H",
+      "tire_pressure": {
+       "bar": 2.4,
+       "psi": 35,
+       "kPa": 240.0
+      }
+     },
+     "rear": {
+      "rim": "",
+      "rim_diameter": null,
+      "rim_width": null,
+      "rim_offset": null,
+      "tire_full": "",
+      "tire": "",
+      "load_index": null,
+      "speed_index": null,
+      "tire_pressure": {
+       "bar": 2.3,
+       "psi": 33,
+       "kPa": 230.0
+      }
+     }
+    },
+    {
+     "is_stock": false,
+     "showing_fp_only": true,
+     "is_extra_load_tires": false,
+     "is_pressed_steel_rims": false,
+     "front": {
+      "rim": "7.5Jx18 ET51",
+      "rim_diameter": 18.0,
+      "rim_width": 7.5,
+      "rim_offset": 51.0,
+      "tire_full": "245/55R18 100V",
+      "tire": "245/55R18",
+      "load_index": 100,
+      "speed_index": "V",
+      "tire_pressure": {
+       "bar": 2.4,
+       "psi": 35,
+       "kPa": 240.0
+      }
+     },
+     "rear": {
+      "rim": "",
+      "tire": "",
+      "tire_full": ""
+     }
+    },
+    {
+     "is_stock": false,
+     "showing_fp_only": true,
+     "is_extra_load_tires": false,
+     "is_pressed_steel_rims": false,
+     "front": {
+      "rim": "8Jx19 ET48",
+      "rim_diameter": 19.0,
+      "rim_width": 8.0,
+      "rim_offset": 48.0,
+      "tire_full": "245/50R19 98V",
+      "tire": "245/50R19",
+      "load_index": 98,
+      "speed_index": "V",
+      "tire_pressure": {
+       "bar": 2.6,
+       "psi": 38,
+       "kPa": 260.0
+      }
+     },
+     "rear": {
+      "rim": "",
+      "tire": "",
+      "tire_full": ""
+     }
+    }
+   ],
+   "configurator": null
+  }
+ ],
+ "usdm": [
+  {
+   "slug": "8465c966b1",
+   "name": "2.5i",
+   "trim": "2.5i",
+   "trim_levels": [
+    "Premium",
+    "Limited",
+    "Touring"
+   ],
+   "regions": [
+    "usdm"
+   ],
+   "make": {
+    "slug": "subaru",
+    "name": "Subaru",
+    "name_en": "Subaru"
+   },
+   "model": {
+    "slug": "outback",
+    "name": "Outback",
+    "name_en": "Outback"
+   },
+   "generation": {
+    "slug": "5b5c2e6aac",
+    "name": "BS Facelift",
+    "platform": "",
+    "start": 2018,
+    "end": 2022,
+    "bodies": []
+   },
+   "technical": {
+    "bolt_pattern": "5x114.3",
+    "centre_bore": "56.1",
+    "wheel_fasteners": {
+     "type": "Lug nuts",
+     "thread_size": "M12 x 1.25"
+    },
+    "wheel_tightening_torque": "120 Nm"
+   },
+   "wheels": [
+    {
+     "is_stock": true,
+     "showing_fp_only": true,
+     "front": {
+      "tire_full": "225/65R17 102H",
+      "tire": "225/65R17",
+      "rim": "7Jx17 ET55"
+     },
+     "rear": {
+      "tire": "",
+      "rim": ""
+     }
+    },
+    {
+     "is_stock": true,
+     "showing_fp_only": true,
+     "front": {
+      "tire_full": "225/60R18 100H",
+      "tire": "225/60R18",
+      "rim": "7Jx18 ET55"
+     },
+     "rear": {
+      "tire": "",
+      "rim": ""
+     }
+    },
+    {
+     "is_stock": false,
+     "showing_fp_only": true,
+     "front": {
+      "tire_full": "245/60R17 102H",
+      "tire": "245/60R17",
+      "rim": "7.5Jx17 ET51"
+     },
+     "rear": {
+      "tire": "",
+      "rim": ""
+     }
+    },
+    {
+     "is_stock": false,
+     "showing_fp_only": true,
+     "front": {
+      "tire_full": "245/55R18 100H",
+      "tire": "245/55R18",
+      "rim": "8Jx18 ET48"
+     },
+     "rear": {
+      "tire": "",
+      "rim": ""
+     }
+    }
+   ]
+  },
+  {
+   "slug": "0b29852b19",
+   "name": "3.6i",
+   "body": null,
+   "trim": "3.6i",
+   "trim_scoring": null,
+   "trim_attributes": [],
+   "trim_body_types": [],
+   "trim_levels": [
+    "Limited",
+    "Touring"
+   ],
+   "make": {
+    "slug": "subaru",
+    "name": "Subaru",
+    "name_en": "Subaru"
+   },
+   "model": {
+    "slug": "outback",
+    "name": "Outback",
+    "name_en": "Outback"
+   },
+   "generation": {
+    "slug": "5b5c2e6aac",
+    "name": "BS Facelift",
+    "platform": "",
+    "start": 2018,
+    "end": 2022,
+    "bodies": []
+   },
+   "start_year": 2018,
+   "end_year": 2019,
+   "regions": [
+    "cdm",
+    "medm",
+    "russia",
+    "usdm"
+   ],
+   "technical": {
+    "wheel_fasteners": {
+     "type": "Lug nuts",
+     "thread_size": "M12 x 1.25"
+    },
+    "wheel_tightening_torque": "120 Nm",
+    "stud_holes": 5,
+    "pcd": 114.3,
+    "centre_bore": "56.1",
+    "bolt_pattern": "5x114.3",
+    "rear_axis_stud_holes": null,
+    "rear_axis_pcd": null,
+    "rear_axis_centre_bore": null,
+    "rear_axis_bolt_pattern": "N/A"
+   },
+   "tire_type": "SUV",
+   "wheels": [
+    {
+     "is_stock": true,
+     "showing_fp_only": true,
+     "is_extra_load_tires": false,
+     "is_high_load_tires": false,
+     "is_recommended_for_winter": false,
+     "is_runflat_tires": false,
+     "is_pressed_steel_rims": false,
+     "front": {
+      "rim": "7Jx18 ET55",
+      "rim_diameter": 18.0,
+      "rim_width": 7.0,
+      "rim_offset": 55.0,
+      "tire_full": "225/60R18 100H",
+      "tire": "225/60R18",
+      "load_index": 100,
+      "speed_index": "H",
+      "tire_pressure": {
+       "bar": 2.4,
+       "psi": 35,
+       "kPa": 240.0
+      }
+     },
+     "rear": {
+      "rim": "",
+      "rim_diameter": null,
+      "rim_width": null,
+      "rim_offset": null,
+      "tire_full": "",
+      "tire": "",
+      "load_index": null,
+      "speed_index": null,
+      "tire_pressure": {
+       "bar": 2.3,
+       "psi": 33,
+       "kPa": 230.0
+      }
+     }
+    },
+    {
+     "is_stock": false,
+     "showing_fp_only": true,
+     "is_extra_load_tires": false,
+     "is_pressed_steel_rims": false,
+     "front": {
+      "rim": "7.5Jx18 ET51",
+      "rim_diameter": 18.0,
+      "rim_width": 7.5,
+      "rim_offset": 51.0,
+      "tire_full": "245/55R18 100V",
+      "tire": "245/55R18",
+      "load_index": 100,
+      "speed_index": "V",
+      "tire_pressure": {
+       "bar": 2.4,
+       "psi": 35,
+       "kPa": 240.0
+      }
+     },
+     "rear": {
+      "rim": "",
+      "tire": "",
+      "tire_full": ""
+     }
+    },
+    {
+     "is_stock": false,
+     "showing_fp_only": true,
+     "is_extra_load_tires": false,
+     "is_pressed_steel_rims": false,
+     "front": {
+      "rim": "8Jx19 ET48",
+      "rim_diameter": 19.0,
+      "rim_width": 8.0,
+      "rim_offset": 48.0,
+      "tire_full": "245/50R19 98V",
+      "tire": "245/50R19",
+      "load_index": 98,
+      "speed_index": "V",
+      "tire_pressure": {
+       "bar": 2.6,
+       "psi": 38,
+       "kPa": 260.0
+      }
+     },
+     "rear": {
+      "rim": "",
+      "tire": "",
+      "tire_full": ""
+     }
+    }
+   ],
+   "configurator": null
+  }
+ ]
+}

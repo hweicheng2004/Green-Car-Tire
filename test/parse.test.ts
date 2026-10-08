@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import { torqueToFtLb } from '../lib/fitment';
+import { parseVehicleQuery } from '../lib/vehicle-query';
+assert.equal(torqueToFtLb('120 Nm'), 89);
+assert.equal(torqueToFtLb('108 - 113 Nm'), 83);
+assert.equal(torqueToFtLb('80 ft-lb'), 80);
+assert.deepEqual(parseVehicleQuery('18 outback'), { year: 2018, text: 'outback', makeHint: null });
+assert.deepEqual(parseVehicleQuery('2019 honda civic'), { year: 2019, text: 'honda civic', makeHint: 'honda' });
+assert.deepEqual(parseVehicleQuery('f150 17'), { year: 2017, text: 'f150', makeHint: null });
+assert.equal(parseVehicleQuery('98 civic')!.year, 1998);
+console.log('PARSE TESTS PASSED');
