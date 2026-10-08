@@ -6,7 +6,7 @@
  Staff edit inventory             Counter tech types "18 outback" or "225 65 17"
  in Google Sheets                             │
         │                                     ▼
-        │ every 5 min             ┌───────────────────────────┐
+        │ every 5 min (pg_cron)   ┌───────────────────────────┐
         ▼                         │  Counter app (Next.js,    │
  Sheets sync route  ───────────▶  │  hosted on Vercel)        │
  (same cleaner as the importer)   │  the prototype screen,    │
@@ -35,7 +35,8 @@ The sheet stays the place staff change stock. Supabase is a fast, clean copy the
 | Inventory tables (`003_inventory.sql`) | Done. Tested in Postgres. |
 | Sheet cleaner (`lib/inventory-clean.ts`) | Done. Handles messy sizes, load/speed, tread, DOT, season words, set prices, inch bolt patterns, dual-drilled wheels. |
 | Sheet → SQL importer page | Done. Paste or upload, check columns, review flagged rows, copy SQL. |
-| Automatic Sheets sync | Not started (phase 2). |
+| Automatic Sheets sync | Built and tested (fake Google, real Postgres). Needs your Google service account to go live. |
+| Next.js app shell | Builds. `/sync` page shows sync status with a Sync now button. |
 | Counter app wired to real data | Not started (phase 3). |
 
 ## Build order
@@ -44,9 +45,17 @@ The sheet stays the place staff change stock. Supabase is a fast, clean copy the
 
 **Phase 1: inventory into the database (1 to 2 days).** Put tires on one tab and wheels on another, each with one header row. Paste each tab into the importer, fix what it flags in the sheet, re-paste until rejected is zero, run the SQL. Done when the counter's sample sizes can be answered from Supabase.
 
-**Phase 2: automatic sync (2 to 3 days).** A `/api/sync/sheets` route reads both tabs with the service account, runs the same cleaner, and replaces rows in one transaction. It writes rejected rows to a "Sync issues" tab in the sheet so staff see what to fix. Runs every 5 minutes (Vercel Cron) plus a "Sync now" button. Done when a qty changed in the sheet shows at the counter within 5 minutes.
+**Phase 2: automatic sync (code done; setup about an hour).** `POST /api/sync/sheets` reads the tabs with the service account, runs the same cleaner, and replaces each table in one transaction (`replace_inventory`, migration 004). Rejected rows go to a "Sync issues" tab in the sheet. It runs every 5 minutes from Supabase pg_cron (`supabase/cron-sync.sql`), because Vercel's free plan only allows a cron once a day. `/sync` has a Sync now button. Safety: an unchanged sheet costs no database writes; a missing tab, a renamed size column, or a drop of more than half the rows is blocked and the counter keeps the last good data until someone fixes it or presses "Sync anyway". Done when a qty changed in the sheet shows at the counter within 5 minutes.
 
-**Phase 3: counter app on real data (3 to 5 days).** Move the prototype screen into the Next.js app. Add `/api/tires?size=` and `/api/wheels?bolt=&bore=`. Swap the sample arrays for the fitment, vehicles, inventory and search-log routes. Fees and distributor links come from `shop_settings`. Done when the prototype's test searches give the same answers on real stock.
+Setup steps:
+1. Google Cloud: create a project, enable the Google Sheets API, create a service account, add a JSON key.
+2. Share the inventory sheet with the service account's email as **Editor** (it writes the "Sync issues" tab).
+3. Run migration `004_inventory_sync.sql` in Supabase.
+4. Set the env vars in `.env.example` (Sheets section) in Vercel, deploy.
+5. Open `/sync`, press Sync now, read the "Sync issues" tab, fix rows in the sheet.
+6. Run `supabase/cron-sync.sql` (with your URL and CRON_SECRET filled in) for the 5-minute schedule.
+
+**Phase 3: counter app on real data (3 to 5 days).** The Next.js shell exists (`app/layout.tsx`, `app/page.tsx` placeholder). Move the prototype screen into the Next.js app. Add `/api/tires?size=` and `/api/wheels?bolt=&bore=`. Swap the sample arrays for the fitment, vehicles, inventory and search-log routes. Fees and distributor links come from `shop_settings`. Done when the prototype's test searches give the same answers on real stock.
 
 **Phase 4: lock it down (1 day).** Staff sign in (Supabase Auth, or Vercel password protection for a single shared counter login). Keys stay in server env only.
 
@@ -56,8 +65,8 @@ The sheet stays the place staff change stock. Supabase is a fast, clean copy the
 
 ## Decisions needed from the shop
 
-1. **Sheet layout.** Is it one tab for tires and one for wheels today? A copy or CSV export lets the importer be tuned to your real columns.
+1. **Sheet layout.** Is it one tab for tires and one for wheels today? The sync expects tabs named "Tires" and "Wheels" (change with `SHEETS_TIRE_TABS` / `SHEETS_WHEEL_TABS`; several tabs per kind are fine). A copy or CSV export lets the importer be tuned to your real columns.
 2. **Who lowers qty after a sale.** Staff in the sheet (simplest, works from day one) or a counter "Sold" button (needs write-back to the sheet).
 3. **Logins.** One shared counter login, or one per person (lets the search log show who quoted what).
 4. **Wheel-Size plan.** The free key is listed as testing only; Basic is $450/yr for production use.
-5. **Hosting.** Vercel's free tier fits a single shop. Pick a domain if you want one (e.g. counter.greencartires.ca).
+5. **Hosting.** Vercel's free tier fits a single shop (the 5-minute sync runs from Supabase, so no paid Vercel plan is needed). Pick a domain if you want one (e.g. counter.greencartires.ca).

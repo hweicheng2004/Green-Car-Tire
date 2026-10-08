@@ -2,3 +2,6 @@
 .env.local
 node_modules
 ws-*.json
+.next
+next-env.d.ts
+*.tsbuildinfo

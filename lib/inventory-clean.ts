@@ -21,6 +21,12 @@ export const FIELD_LABELS: Record<string, string> = {
   lugSeat: 'Lug seat', tpms: 'TPMS',
 };
 
+/** Columns a sheet can't do without. Each group needs at least one of its fields mapped. */
+export const REQUIRED_FIELDS: Record<Kind, string[][]> = {
+  tires: [['size', 'description', 'width']],
+  wheels: [['wheelSize', 'diameter', 'description'], ['boltPattern', 'description']],
+};
+
 // Header words that point to each field. Checked against lowercased headers with punctuation removed.
 const SYN: Record<string, RegExp> = {
   size: /^(tire\s*)?size$|^tyre\s*size$|^size\b|dimension/,

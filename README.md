@@ -20,9 +20,10 @@ Counter box "18 outback"
 2. **Env.** Copy `.env.example` to `.env.local` (Next.js) and `.env` (scripts), and fill in the key and Supabase values.
 3. **Check the key** (2 hits): `npm i && npm run check-key -- 2018 subaru outback`
    It prints the fitment card and saves the raw JSON. Compare the bolt pattern, bore, sizes and offsets to what you know about the car. If any field comes out `?`, send that JSON file back and the mapping in `lib/fitment.ts` gets adjusted.
-4. **Database.** Run `supabase/migrations/001_wheelsize_cache.sql`, `002_search_log.sql` and `003_inventory.sql`, in order, in the Supabase SQL editor.
+4. **Database.** Run `supabase/migrations/001_wheelsize_cache.sql` through `004_inventory_sync.sql`, in order, in the Supabase SQL editor.
 5. **Load makes and models** (about 120 hits for both markets, once a year; run it on a quiet day): `npm run seed-models`
-6. **Copy into the Next.js app:** `lib/*` and `app/api/*` go into the app as-is (the `@/` import alias is assumed).
+6. **Run the app:** `npm run dev`, then open http://localhost:3000/sync. This repo is the Next.js app; deploy it to Vercel as is.
+7. **Sheets sync:** see Phase 2 in `PLAN.md`.
 
 ## Files
 
@@ -38,6 +39,13 @@ Counter box "18 outback"
 | `app/api/searches/route.ts` | `POST` saves one search, `GET` lists recent ones. |
 | `app/api/fitment/by-size/route.ts` | Vehicles that came on a size ("OE on" for size searches), from saved fitments. No API calls. |
 | `lib/inventory-clean.ts` | Cleans spreadsheet rows into tire and wheel rows, finds the header row, matches columns, writes the import SQL. Shared by the importer page and the future Sheets sync. |
+| `lib/google-sheets.ts` | Google Sheets client (service account, no extra packages): read tabs, write the "Sync issues" tab. |
+| `lib/inventory-sync.ts` | The sync: cleans each tab, decides if it's safe to write, builds the "Sync issues" tab. |
+| `lib/inventory-sync-store.ts` | Supabase side of the sync, and the wiring shared by the route and the page. |
+| `app/api/sync/sheets/route.ts` | `POST` runs a sync (needs `Authorization: Bearer CRON_SECRET`), `GET` returns the latest sync per kind. |
+| `app/sync/page.tsx` | Sync status page with Sync now / Sync anyway buttons. |
+| `supabase/migrations/004_inventory_sync.sql` | `inventory_syncs` log and `replace_inventory()` (one transaction per table). |
+| `supabase/cron-sync.sql` | 5-minute schedule from Supabase pg_cron. Run once after deploying. |
 | `importer/` | The Sheet → SQL page. `node scripts/build-importer.mjs` rebuilds `importer/dist/sheet-import.html` after cleaner changes. |
 | `supabase/migrations/003_inventory.sql` | `tires`, `wheels`, `shop_settings` tables. |
 | `scripts/seed-models.ts` | Loads all Canadian and US makes and models for the counter search. |
@@ -66,7 +74,7 @@ Two reports are ready in Supabase:
 ## Things Wheel-Size doesn't cover
 
 - **Lug seat type** (conical, ball or flat). Defaulted by make in `lib/fitment.ts` (Honda/Acura ball, Toyota/Lexus flat, most others conical). Set `vehicle_fitment.lug_seat` to override a vehicle.
-- **Your stock.** Inventory still comes from the Google Sheets sync. The dashboard joins the fitment card to inventory by tire size, bolt pattern and bore.
+- **Your stock.** Inventory comes from the Google Sheets sync (`/api/sync/sheets`). The dashboard joins the fitment card to inventory by tire size, bolt pattern and bore.
 
 ## Plan sizing
 
