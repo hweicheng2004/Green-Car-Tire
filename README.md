@@ -22,6 +22,16 @@ Deploy to Vercel with no environment variables, or run `npm run dev` locally wit
 - `/sync` shows what a sync of the demo sheet produces, including the "Sync issues" tab.
 - Nothing is saved and no API is called. Set `DEMO_MODE=0` to force live mode, `DEMO_MODE=1` to force demo with accounts set.
 
+## Special orders: TireConnect
+
+When a size has no new tire in stock, the counter shows **Order on TireConnect** (or press **O**). It opens TireConnect searched for that size and copies the size too.
+
+Set it up once: open TireConnect, search **225/65R17**, copy the address bar, and paste it either
+- for every counter PC: Vercel env `TIRECONNECT_URL`, or in Supabase `insert into shop_settings (key, value) values ('tireconnect', '{"url": "PASTE HERE"}') on conflict (key) do update set value = excluded.value;`
+- or for one PC: Shop fees & rules > TireConnect.
+
+The counter finds 225, 65 and 17 in the address and swaps in each size (`components/counter/order-link.ts`). If TireConnect's address doesn't include the size, the button still opens it and the size is on the clipboard to paste. Other distributor portals work the same way.
+
 ## Setup
 
 1. **Get a key.** Sign up at developer.wheel-size.com. The free sandbox key gives 300 hits/day for testing. Keys are hand-reviewed (a few hours).

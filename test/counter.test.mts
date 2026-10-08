@@ -65,3 +65,22 @@ const w = toCounterWheel({ wheel_type: 'steel', condition: 'new', grade: null, d
 assert.deepEqual([w.pcd, w.w, w.cb, w.et, w.price, w.desc, w.type], ['5×114.3', null, null, null, null, 'Wheel', 'Steel'], 'blank sheet cells stay blank, not 0');
 
 console.log('COUNTER TEST PASSED');
+
+// ---- TireConnect / distributor order links
+const { exampleToTemplate: tpl, fillTemplate: fill, hasSlots } = await import('../components/counter/order-link');
+const s245 = { w: 245, a: 40, r: 18, key: '245/40R18' };
+const cases: [string, string][] = [
+  ['https://x.tireconnect.ca/#!/search/size?width=225&profile=65&rim=17', 'https://x.tireconnect.ca/#!/search/size?width=245&profile=40&rim=18'],
+  ['https://p.example/search?q=225%2F65R17&loc=2', 'https://p.example/search?q=245%2F40R18&loc=2'],
+  ['https://p.example/s/225/65/R17', 'https://p.example/s/245/40/R18'],
+  ['https://p.example/?q=2256517', 'https://p.example/?q=2454018'],
+  ['https://p.example/?q={size_plain}', 'https://p.example/?q=245/40R18'],
+];
+for (const [ex, want] of cases) assert.equal(fill(tpl(ex), s245), want, ex);
+assert.equal(tpl('https://app.tireconnect.ca/dealer'), 'https://app.tireconnect.ca/dealer', 'no size: left as is, button copies the size');
+assert.equal(hasSlots(tpl('https://app.tireconnect.ca/dealer')), false);
+assert.equal(tpl('https://p.example/?w=225&page=17'), 'https://p.example/?w=225&page=17', 'half a size is never templated');
+assert.equal(feesFromSettings([], { TIRECONNECT_URL: 'https://a.tireconnect.ca/' }).tc, 'https://a.tireconnect.ca/');
+assert.equal(feesFromSettings([{ key: 'tireconnect', value: { url: 'https://b.tireconnect.ca/' } }], { TIRECONNECT_URL: 'https://a.tireconnect.ca/' }).tc, 'https://b.tireconnect.ca/', 'shop setting wins over env');
+assert.equal(feesFromSettings([{ key: 'tireconnect', value: { url: 'javascript:alert(1)' } }], {}).tc, '', 'only web addresses');
+console.log('ORDER LINK TEST PASSED');

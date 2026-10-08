@@ -5,6 +5,8 @@
 //   log/flush search logging (lib/log-search-client.ts); no-ops in demo mode
 // Returns a cleanup function that removes every listener (React runs effects twice in development).
 
+import { exampleToTemplate, fillTemplate, hasSlots, isHttpUrl } from './order-link';
+
 const SIZE_RE = /^\s*(?:P|LT)?\s*(\d{3})\s*[\/\s\-]*\s*(\d{2})\s*[\sRZ\/\-]*\s*(\d{2})\s*$/i;
 export function parseSize(s) {
   const m = String(s).match(SIZE_RE); if (!m) return null;
@@ -38,6 +40,7 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   // Fees: shop settings from the server; edits on this PC are kept in this browser.
   let fees = { ...data.fees, dist: [...data.fees.dist] };
   try { const s = JSON.parse(localStorage.getItem('gct-fees') || 'null'); if (s) fees = { ...fees, ...s }; } catch (e) {}
+  if (!fees.tc) fees.tc = data.fees.tc || '';   // a blank on this PC never hides the shop-wide TireConnect address
 
   const st = { mode: 'none', veh: null, oeIdx: 0, target: null, oe: null, rows: [], excluded: [], sel: null, qty: 4, season: 'all', cond: 'all', stock: true,
     tab: 'tires', wrows: [], wex: [], wsel: null, wtype: 'all', wcond: 'all', sensors: false, query: '' };
@@ -253,11 +256,20 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   }
   function renderStock() { renderTabs(); if (st.tab === 'tires') { renderTires(); renderSpecial(); } else { renderWheels(); $('special').innerHTML = ''; } }
   function distLinks(s) {
-    const raw = `${s.w}${s.a}${s.r}`;
-    return (fees.dist || []).filter(d => d && d.url && /^https?:\/\//i.test(d.url)).map((d, i) => {
-      const href = d.url.replace(/\{size\}/g, encodeURIComponent(s.key)).replace(/\{raw\}/g, raw);
-      return `<a class="${i === 0 ? 'main' : ''}" href="${esc(href)}" target="_blank" rel="noopener">${esc(d.name || 'Distributor ' + (i + 1))} ↗</a>`;
+    return (fees.dist || []).filter(d => d && isHttpUrl(d.url)).map((d, i) => {
+      const href = fillTemplate(exampleToTemplate(d.url), s);
+      return `<a href="${esc(href)}" target="_blank" rel="noopener" data-order="${s.key}" data-filled="${hasSlots(exampleToTemplate(d.url))}">${esc(d.name || 'Distributor ' + (i + 1))} ↗</a>`;
     });
+  }
+  const tcOn = () => isHttpUrl(fees.tc);
+  const tcHref = s => fillTemplate(exampleToTemplate(fees.tc), s);
+  const tcLink = s => tcOn() ? `<a class="main" id="orderTc" href="${esc(tcHref(s))}" target="_blank" rel="noopener" data-order="${s.key}" data-filled="${hasSlots(exampleToTemplate(fees.tc))}">Order on TireConnect ↗ <kbd>O</kbd></a>` : '';
+  // Opening a portal also copies the size, so a portal that can't take it in the address is one paste away.
+  function copyForOrder(size, filled) {
+    const o = $('sizeCopied'); if (!o) return;
+    const done = () => { o.hidden = false; o.textContent = filled ? `Opened with ${size}. Size also copied.` : `${size} copied. Paste it into the search box.`; };
+    try { navigator.clipboard.writeText(size).then(done).catch(() => { o.hidden = false; o.textContent = `Search for ${size}.`; }); } catch (e) { o.hidden = false; o.textContent = `Search for ${size}.`; }
+    flush();
   }
   function renderSpecial() {
     const el = $('special'), s = st.target;
@@ -270,10 +282,10 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
       <div><div class="eyebrow" style="color:var(--accent);margin:0">No new tire in stock · special order</div>
         <div class="sosize">${s.key}</div>
         <div class="gen">${st.oe && st.oe.li != null ? `Order load ${st.oe.li}${st.oe.sr ?? ''} or higher. ` : ''}${usedIn ? 'Used or alternate stock is listed below if the customer can\'t wait.' : 'Nothing on the shelf to pivot to.'}</div></div>
-      <div class="soact">${links.join('')}
-        <a href="https://www.google.com/search?q=${encodeURIComponent(s.key + ' tire')}" target="_blank" rel="noopener">Search web ↗</a>
+      <div class="soact">${tcLink(s)}${links.join('')}
+        ${tcOn() ? '' : `<a href="https://www.google.com/search?q=${encodeURIComponent(s.key + ' tire')}" target="_blank" rel="noopener">Search web ↗</a>`}
         <button id="copySize" data-size="${s.key}">Copy size</button></div>
-      ${links.length ? '' : '<div class="feehint" style="margin:0">Add your distributor portals under Shop fees &amp; rules to get one-click links here.</div>'}
+      ${tcOn() ? '' : '<div class="feehint" style="margin:0">Add your TireConnect address under Shop fees &amp; rules to order in one click.</div>'}
       <div class="gen" id="sizeCopied" style="width:100%;margin:0" hidden></div>
     </div>`;
   }
@@ -489,6 +501,8 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   function saveFees() { try { localStorage.setItem('gct-fees', JSON.stringify(fees)); } catch (e) {} }
 
   on(document, 'click', e => {
+    const ord = e.target.closest('a[data-order]');
+    if (ord) { copyForOrder(ord.dataset.order, ord.dataset.filled === 'true'); return; }
     const b = e.target.closest('[data-v],[data-s],[data-oe],[data-tab],[data-season],[data-cond],[data-wtype],[data-wcond],[data-qty],tr.wrow,tr.row,#copy,#copySize,#toTires'); if (!b) return;
     if (b.dataset.v) { $('qv').value = b.dataset.v; searchVehicle(b.dataset.v); }
     else if (b.dataset.s) { $('qs').value = b.dataset.s; searchSize(b.dataset.s); }
@@ -534,6 +548,7 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     else if (/^[1-4]$/.test(e.key)) setQty(+e.key);
     else if ((e.key === '[' || e.key === ']') && st.mode === 'vehicle') setOE(st.oeIdx + (e.key === ']' ? 1 : -1));
     else if (k === 'c' && !e.metaKey && !e.ctrlKey) copyQuote();
+    else if (k === 'o' && !e.metaKey && !e.ctrlKey) { const a = $('orderTc'); if (a) { window.open(a.href, '_blank', 'noopener'); copyForOrder(a.dataset.order, a.dataset.filled === 'true'); } }
     else if (e.key === 'Escape') { focusBox(lastBox); }
   });
 
@@ -545,6 +560,17 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   }
   $('f-tpmsOn').checked = fees.tpmsOn;
   on($('f-tpmsOn'), 'change', e => { fees.tpmsOn = e.target.checked; saveFees(); renderQuote(); });
+  const tcStatus = () => {
+    const v = $('f-tc').value.trim(), el = $('f-tc-status');
+    if (!v) { el.textContent = data.fees.tc ? 'Using the shop-wide TireConnect address.' : ''; return; }
+    if (!isHttpUrl(v)) { el.textContent = 'That doesn\'t look like a web address. Copy it from the address bar.'; return; }
+    el.textContent = hasSlots(exampleToTemplate(v)) ? 'Size found in the address: each order opens with the size filled in.'
+      : 'No 225/65R17 found in the address: the button opens TireConnect and copies the size to paste.';
+  };
+  $('f-tc').value = fees.tc === data.fees.tc ? '' : fees.tc;
+  $('f-tc').placeholder = data.fees.tc ? 'Shop-wide address set. Paste one to override on this PC.' : 'Paste a TireConnect search address';
+  tcStatus();
+  on($('f-tc'), 'input', () => { fees.tc = $('f-tc').value.trim() || data.fees.tc || ''; saveFees(); tcStatus(); if (st.tab === 'tires') renderSpecial(); });
   for (let i = 0; i < 3; i++) {
     const d = (fees.dist && fees.dist[i]) || { name: '', url: '' };
     $('dn' + i).value = d.name; $('du' + i).value = d.url;

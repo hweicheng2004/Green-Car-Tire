@@ -28,6 +28,7 @@ export type VehicleResult =
 export type Fees = {
   mount: number; disp: number; tpms: number; tpmsOn: boolean; tax: number; tol: number;
   rings: number; lugs: number; sensor: number; dist: { name: string; url: string }[];
+  tc: string;   // TireConnect search address (or one pasted from a 225/65R17 search); '' = not set
 };
 export type CounterInventory = {
   mode: 'demo' | 'live'; status: string; tires: CounterTire[]; wheels: CounterWheel[]; fees: Fees;
@@ -72,12 +73,16 @@ export function fitmentToCounter(f: Fitment, makeSlug: string, modelSlug: string
 
 export const DEFAULT_FEES: Fees = {
   mount: 20, disp: 5, tpms: 10, tpmsOn: false, tax: 13, tol: 3, rings: 25, lugs: 45, sensor: 65,
-  dist: [{ name: '', url: '' }, { name: '', url: '' }, { name: '', url: '' }],
+  dist: [{ name: '', url: '' }, { name: '', url: '' }, { name: '', url: '' }], tc: '',
 };
 
-/** shop_settings rows (migration 003) -> counter fees. Missing or bad values fall back to the defaults. */
-export function feesFromSettings(rows: { key: string; value: unknown }[]): Fees {
-  const fees = { ...DEFAULT_FEES, dist: [...DEFAULT_FEES.dist] };
+/** shop_settings rows (migration 003) -> counter fees. Missing or bad values fall back to the defaults.
+ *  TireConnect: shop_settings key "tireconnect" ({"url": "..."}), else env TIRECONNECT_URL. */
+export function feesFromSettings(rows: { key: string; value: unknown }[], env: Record<string, string | undefined> = process.env): Fees {
+  const fees = { ...DEFAULT_FEES, dist: [...DEFAULT_FEES.dist], tc: env.TIRECONNECT_URL?.trim() || '' };
+  const tc = rows.find(r => r.key === 'tireconnect')?.value as { url?: unknown } | string | undefined;
+  const tcUrl = typeof tc === 'string' ? tc : tc && typeof tc.url === 'string' ? tc.url : '';
+  if (/^https?:\/\//i.test(tcUrl.trim())) fees.tc = tcUrl.trim();
   const f = (rows.find(r => r.key === 'fees')?.value ?? {}) as Record<string, unknown>;
   const map: [keyof Fees, string][] = [['mount', 'mountBalance'], ['disp', 'disposal'], ['tpms', 'tpmsKit'], ['rings', 'hubRingsSet'],
     ['lugs', 'lugSet'], ['sensor', 'tpmsSensor'], ['tax', 'taxPct'], ['tol', 'altTolerancePct']];

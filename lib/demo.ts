@@ -6,7 +6,7 @@ import demoBook from '../demo/demo-inventory.json';
 import { cleanTab, planKind, issueSheet, type KindPlan, type TabResult } from './inventory-sync';
 import type { TireRow, WheelRow } from './inventory-clean';
 import { compact, parseVehicleQuery } from './vehicle-query';
-import { toCounterTire, toCounterWheel, DEFAULT_FEES, type CounterInventory, type CounterVehicle, type CounterOe, type VehicleResult } from './counter-data';
+import { toCounterTire, toCounterWheel, feesFromSettings, type CounterInventory, type CounterVehicle, type CounterOe, type VehicleResult } from './counter-data';
 
 export const isDemo = (env: Record<string, string | undefined> = process.env) =>
   env.DEMO_MODE === '1' || env.DEMO_MODE === 'true' || (!env.SUPABASE_URL && env.DEMO_MODE !== '0');
@@ -84,7 +84,7 @@ export function demoInventory(): CounterInventory {
     status: 'Demo mode · sample stock from the demo sheet · no accounts connected',
     tires: plans[0].rows.map((r, i) => toCounterTire(r as TireRow, i)),
     wheels: plans[1].rows.map((r, i) => toCounterWheel(r as WheelRow, i)),
-    fees: { ...DEFAULT_FEES, dist: [...DEFAULT_FEES.dist] },
+    fees: feesFromSettings([]),
     tries: { vehicles: ['18 outback', '20 crv', '2019 honda civic', '17 f150'], sizes: ['225 65 17', '2056016', '265/70R17'] },
   };
 }
