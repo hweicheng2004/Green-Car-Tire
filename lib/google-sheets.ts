@@ -39,19 +39,21 @@ export const tabRange = (tab: string) => `'${tab.replace(/'/g, "''")}'`;
 
 export type SheetsClient = ReturnType<typeof sheetsClient>;
 
-export function sheetsClient(spreadsheetId: string, sa: ServiceAccount, fetchImpl: typeof fetch = fetch) {
-  let token: { value: string; exp: number } | null = null;
+// Tokens last an hour; a warm instance reuses one across 5-minute syncs instead of signing in every time.
+const tokens = new Map<string, { value: string; exp: number }>();
 
+export function sheetsClient(spreadsheetId: string, sa: ServiceAccount, fetchImpl: typeof fetch = fetch) {
   async function accessToken() {
-    if (token && token.exp > Date.now() + 60_000) return token.value;
+    const cached = tokens.get(sa.client_email);
+    if (cached && cached.exp > Date.now() + 60_000) return cached.value;
     const res = await fetchImpl(TOKEN_URL, {
       method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: signJwt(sa) }),
     });
     const body = await res.json().catch(() => ({})) as { access_token?: string; expires_in?: number; error_description?: string };
     if (!res.ok || !body.access_token) throw new SheetsError(res.status, `Google sign-in failed: ${body.error_description || res.status}. Check GOOGLE_SERVICE_ACCOUNT_JSON.`);
-    token = { value: body.access_token, exp: Date.now() + (body.expires_in ?? 3600) * 1000 };
-    return token.value;
+    tokens.set(sa.client_email, { value: body.access_token, exp: Date.now() + (body.expires_in ?? 3600) * 1000 });
+    return body.access_token;
   }
 
   async function call<T>(method: string, path: string, body?: unknown): Promise<T> {

@@ -63,7 +63,12 @@ export function demoOeOn(size: string) {
 }
 
 // ---------------------------------------------------------------- inventory and sync preview
+// The demo sheet never changes, so it's cleaned once per server instance, not on every request.
+let demoCache: { results: TabResult[]; plans: KindPlan[] } | null = null;
 export function demoSync(): { results: TabResult[]; plans: KindPlan[] } {
+  return (demoCache ??= cleanDemo());
+}
+function cleanDemo() {
   const t = cleanTab('Tires', 'tires', book.Tires), w = cleanTab('Wheels', 'wheels', book.Wheels);
   return {
     results: [t, w],

@@ -44,14 +44,14 @@ export type SyncStatusRow = {
 /** Latest sync row per kind, plus the last successful one (the counter's data is from that one). */
 export async function syncStatus(db = supabaseAdmin()) {
   const cols = 'kind, status, synced_at, checked_at, trigger, tabs, rows_synced, qty_on_hand, rejected, warnings, message';
-  const out: Record<string, { latest: SyncStatusRow | null; lastOk: SyncStatusRow | null }> = {};
-  for (const kind of ['tires', 'wheels'] as const) {
+  const one = async (kind: 'tires' | 'wheels') => {
     const [latest, lastOk] = await Promise.all([
       db.from('inventory_syncs').select(cols).eq('kind', kind).order('id', { ascending: false }).limit(1).maybeSingle(),
       db.from('inventory_syncs').select(cols).eq('kind', kind).eq('status', 'ok').order('id', { ascending: false }).limit(1).maybeSingle(),
     ]);
     if (latest.error) throw new Error(explainDbError(latest.error));
-    out[kind] = { latest: latest.data as SyncStatusRow | null, lastOk: lastOk.data as SyncStatusRow | null };
-  }
-  return out as Record<'tires' | 'wheels', { latest: SyncStatusRow | null; lastOk: SyncStatusRow | null }>;
+    return { latest: latest.data as SyncStatusRow | null, lastOk: lastOk.data as SyncStatusRow | null };
+  };
+  const [tires, wheels] = await Promise.all([one('tires'), one('wheels')]);
+  return { tires, wheels };
 }

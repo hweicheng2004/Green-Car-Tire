@@ -52,10 +52,11 @@ export const searchByModel = (make: string, model: string, year: number, region:
 
 /** Every configured market, merged and de-duplicated by modification slug. One hit per region. */
 export async function searchAllRegions(make: string, model: string, year: number, onHit?: () => Promise<void>) {
+  // Markets are fetched in parallel; merging in region order keeps the first market's record on duplicates.
+  const results = await Promise.all(regions().map(async r => { await onHit?.(); return searchByModel(make, model, year, r); }));
   const seen = new Map<string, WsModification>();
-  for (const r of regions()) {
-    await onHit?.();
-    for (const m of await searchByModel(make, model, year, r)) {
+  for (const list of results) {
+    for (const m of list) {
       const k = m.slug ?? `${m.trim}|${m.name}`;
       if (!seen.has(k)) seen.set(k, m);
     }

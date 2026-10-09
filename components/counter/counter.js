@@ -32,8 +32,15 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
 
   const INV = data.tires.map(t => ({ ...t, s: parseSize(t.size) })).filter(t => t.s);
   const WHL = data.wheels;
-  const SIZES = [...new Set(INV.map(t => t.size))];
-  const onHand = key => INV.filter(t => t.size === key).reduce((n, t) => n + t.qty, 0);
+  // Indexes built once: a search only scans tires on the same rim size, and OE badges read a precomputed count.
+  const byRim = new Map(), qtyBySize = new Map(), maxLiBySize = new Map();
+  for (const t of INV) {
+    (byRim.get(t.s.r) || byRim.set(t.s.r, []).get(t.s.r)).push(t);
+    qtyBySize.set(t.size, (qtyBySize.get(t.size) || 0) + t.qty);
+    maxLiBySize.set(t.size, Math.max(maxLiBySize.get(t.size) ?? 0, t.li ?? 0));
+  }
+  const SIZES = [...qtyBySize.keys()];
+  const onHand = key => qtyBySize.get(key) || 0;
   const wsize = w => `${w.d}×${q2(w.w)}`;
   const VEHCACHE = new Map(), OECACHE = new Map();
 
@@ -52,10 +59,10 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     const tgt = st.target, oe = st.oe; st.rows = []; st.excluded = [];
     if (!tgt) return;
     const d0 = dia(tgt), ex = new Map();
-    for (const t of INV) {
+    for (const t of byRim.get(tgt.r) || []) {
       let group = null, delta = 0;
       if (t.size === tgt.key) group = 'exact';
-      else if (t.s.r === tgt.r && Math.abs(t.s.w - tgt.w) <= 10) {
+      else if (Math.abs(t.s.w - tgt.w) <= 10) {
         delta = (dia(t.s) - d0) / d0 * 100;
         if (Math.abs(delta) <= fees.tol) group = 'alt';
       }
@@ -75,7 +82,7 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     for (const k of SIZES) {
       const s = parseSize(k); if (s.r !== d) continue;
       const delta = (dia(s) - d0) / d0 * 100;
-      const li = Math.max(...INV.filter(t => t.size === k).map(t => t.li ?? 0));
+      const li = maxLiBySize.get(k);
       if (Math.abs(delta) <= fees.tol && li >= (ref.li ?? 0) && (!best || Math.abs(delta) < Math.abs(best.delta))) best = { key: k, delta };
     }
     return best;
@@ -579,7 +586,7 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   }
 
   // header and examples
-  $('status').innerHTML = `<span class="dot${data.mode === 'live' ? ' live' : ''}"></span>${esc(data.status)} · <a href="/sync">sync</a>`;
+  $('status').innerHTML = `<span class="dot${data.mode === 'live' ? ' live' : ''}"></span>${esc(data.status)} · <a href="/sync">sync</a> · <a href="/import">import</a>`;
   $('triesV').innerHTML = 'Try: ' + data.tries.vehicles.map(v => `<button data-v="${esc(v)}">${esc(v)}</button>`).join('');
   $('triesS').innerHTML = 'Try: ' + data.tries.sizes.map(s => `<button data-s="${esc(s)}">${esc(s)}</button>`).join('');
 

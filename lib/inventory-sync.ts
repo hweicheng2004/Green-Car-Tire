@@ -156,11 +156,13 @@ export async function runSync(opts: {
     results.push(...res);
     const hash = sha(present.map(t => [t, values[t]]));
     const last = await store.lastSync(kind);
-    const plan = planKind(kind, tabs, res, tabs.filter(t => !existing.includes(t)), hash, await store.count(kind), force);
+    const unchanged = !force && last?.status === 'ok' && last.content_hash === hash;
+    // The row count only feeds the big-drop guard, so an unchanged sheet skips that query.
+    const plan = planKind(kind, tabs, res, tabs.filter(t => !existing.includes(t)), hash, unchanged ? 0 : await store.count(kind), force);
     plans.push(plan);
     const base = { kind, rows: plan.rows.length, qty: plan.qty, rejected: plan.rejected, warnings: plan.warnings };
 
-    if (!force && last?.status === 'ok' && last.content_hash === hash) {
+    if (unchanged) {
       await store.touch(last.id);
       reports.push({ ...base, status: 'unchanged', message: null });
       continue;

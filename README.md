@@ -22,6 +22,16 @@ Deploy to Vercel with no environment variables, or run `npm run dev` locally wit
 - `/sync` shows what a sync of the demo sheet produces, including the "Sync issues" tab.
 - Nothing is saved and no API is called. Set `DEMO_MODE=0` to force live mode, `DEMO_MODE=1` to force demo with accounts set.
 
+## Spreadsheet import with Claude (`/import`)
+
+Upload a CSV or Excel file (or paste cells) and get SQL to run in Supabase.
+
+1. The same rule-based cleaner as the Sheets sync reads every row in the browser. Free and instant; most rows end here.
+2. **Fix with Claude** sends only the rows the rules couldn't read (or the whole sheet if its columns weren't recognised, or every row if you tick the box) to `claude-opus-5-5`, 60 rows per request, a few requests in parallel. The instructions are prompt-cached, so later batches cost less.
+3. Claude returns structured rows (a JSON schema), not SQL. Each row is checked against the same limits as the database (`lib/claude-import.ts`), and `toSql()` writes the SQL. A wrong answer can only reject a row.
+
+The page shows each row's origin (rules or Claude), what Claude changed, and an estimated cost. Needs `ANTHROPIC_API_KEY`; set `ADMIN_PASSWORD` so a public URL can't spend your credit. Requests use `fallbacks: "default"`, so a request Claude declines is re-run on Anthropic's recommended fallback model instead of failing.
+
 ## Special orders: TireConnect
 
 When a size has no new tire in stock, the counter shows **Order on TireConnect** (or press **O**). It opens TireConnect searched for that size and copies the size too.
@@ -70,6 +80,8 @@ The counter finds 225, 65 and 17 in the address and swaps in each size (`compone
 | `lib/counter-live.ts` | Live data: Supabase inventory and settings, fitment through the cache. |
 | `lib/demo.ts` | Demo mode: sample vehicles, demo sheet inventory, sync preview. |
 | `lib/vehicle-lookup.ts`, `lib/fitment-lookup.ts` | Shorthand → model, and the cached Wheel-Size lookup. Shared by the API routes and the counter. |
+| `components/import/ImportDashboard.tsx`, `app/import/page.tsx` | The `/import` page. |
+| `lib/claude-import.ts`, `app/api/import/claude/route.ts` | Claude reads the rows the rules couldn't: prompt, output schema, validation, batching. |
 | `importer/` | The Sheet → SQL page. `node scripts/build-importer.mjs` rebuilds `importer/dist/sheet-import.html` after cleaner changes. |
 | `supabase/migrations/003_inventory.sql` | `tires`, `wheels`, `shop_settings` tables. |
 | `scripts/seed-models.ts` | Loads all Canadian and US makes and models for the counter search. |

@@ -1,6 +1,6 @@
 'use client';
 // The counter screen. React renders the prototype's markup once; counter.js fills it and handles every interaction.
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { COUNTER_MARKUP } from './markup';
 import { startCounter } from './counter.js';
 import { logSearch, flushSearch } from '@/lib/log-search-client';
@@ -8,20 +8,13 @@ import type { CounterInventory, VehicleResult } from '@/lib/counter-data';
 import type { CounterSearch } from '@/lib/search-log';
 
 const getJson = async <T,>(url: string): Promise<T> => {
-  const res = await fetch(url, { cache: 'no-store' });
+  const res = await fetch(url);
   const body = await res.json();
   if (!res.ok) throw new Error(body?.error || `${url} returned ${res.status}`);
   return body as T;
 };
 
-export default function Counter() {
-  const [data, setData] = useState<CounterInventory | null>(null);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    getJson<CounterInventory>('/api/counter/inventory').then(setData).catch(e => setError((e as Error).message));
-  }, []);
-
+export default function Counter({ data, error }: { data?: CounterInventory; error?: string }) {
   useEffect(() => {
     if (!data) return;
     const live = data.mode === 'live';
@@ -37,14 +30,13 @@ export default function Counter() {
     });
   }, [data]);
 
-  if (error) return (
+  if (error || !data) return (
     <div className="loading">
       <div className="setup">
         <div className="eyebrow">Couldn&apos;t load inventory</div>
-        <p>{error}</p>
+        <p>{error ?? 'No data.'}</p>
       </div>
     </div>
   );
-  if (!data) return <div className="loading">Loading inventory…</div>;
   return <div className="app" dangerouslySetInnerHTML={{ __html: COUNTER_MARKUP }} />;
 }

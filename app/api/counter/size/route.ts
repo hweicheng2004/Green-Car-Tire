@@ -10,7 +10,8 @@ export async function GET(req: Request) {
   const size = (new URL(req.url).searchParams.get('size') ?? '').toUpperCase().replace(/\s/g, '');
   if (!/^\d{3}\/\d{2}R\d{2}$/.test(size)) return NextResponse.json({ error: 'size like 225/65R17 is required' }, { status: 400 });
   try {
-    return NextResponse.json({ size, vehicles: isDemo() ? demoOeOn(size) : await liveOeOn(supabaseAdmin(), size) });
+    const vehicles = isDemo() ? demoOeOn(size) : await liveOeOn(supabaseAdmin(), size);
+    return NextResponse.json({ size, vehicles }, { headers: { 'cache-control': 'public, s-maxage=300, stale-while-revalidate=3600' } });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }

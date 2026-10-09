@@ -8,10 +8,11 @@
     "check-key": "tsx scripts/check-key.ts",
     "seed-models": "tsx scripts/seed-models.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx test/outback.test.ts && tsx test/parse.test.ts && tsx test/db.test.mts && tsx test/client-log.test.ts && tsx test/inventory.test.mts && tsx test/sync.test.mts && tsx test/counter.test.mts && tsx test/setup-sql.test.mts",
+    "test": "tsx test/outback.test.ts && tsx test/parse.test.ts && tsx test/db.test.mts && tsx test/client-log.test.ts && tsx test/inventory.test.mts && tsx test/sync.test.mts && tsx test/counter.test.mts && tsx test/setup-sql.test.mts && tsx test/claude-import.test.mts",
     "setup-sql": "node scripts/build-setup-sql.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.132.1",
     "@supabase/supabase-js": "^2.45.0",
     "dotenv": "^16.4.5",
     "next": "^14.2.15",
@@ -22,8 +23,8 @@
     "@electric-sql/pglite": "^0.2.17",
     "@types/node": "^20.14.0",
     "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.5.4",
-    "@types/react-dom": "^18.3.0"
+    "typescript": "^5.5.4"
   }
 }

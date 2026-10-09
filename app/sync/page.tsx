@@ -58,7 +58,7 @@ function DemoSync() {
   const cell = { padding: '6px 8px', borderBottom: '1px solid #dde1dc', textAlign: 'left' as const, verticalAlign: 'top' as const };
   return (
     <main style={{ maxWidth: 960, margin: '0 auto', padding: '24px 16px', background: '#f6f7f5', color: '#1b1f1c', minHeight: '100vh' }}>
-      <p style={{ margin: '0 0 12px' }}><a href="/">← Counter</a></p>
+      <p style={{ margin: '0 0 12px' }}><a href="/">← Counter</a> · <a href="/import">Import a spreadsheet</a></p>
       <h1 style={{ fontSize: 22, margin: '0 0 4px' }}>Inventory sync <span style={{ color: colour.blocked, fontSize: 15 }}>demo mode</span></h1>
       <p style={{ margin: '0 0 16px', color: '#555', lineHeight: 1.5 }}>
         No accounts are connected, so the counter is reading the built-in demo sheet (<code>demo/demo-inventory.json</code>, the same cells as
