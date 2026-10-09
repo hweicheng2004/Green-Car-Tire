@@ -2,7 +2,7 @@
 // /setup — first use after demo mode is off. Walks through: database connected, tables created, tires loaded,
 // wheels loaded, optional extras. Spreadsheets are read in the browser and cleaned + loaded on the server.
 import { useState } from 'react';
-import { readSheetFile, type Sheet } from '@/components/import/read-sheet';
+import { readSheetFile, suggestTabs, type Sheet, type TabPick } from '@/components/import/read-sheet';
 import type { SetupStatus, LoadPreview } from '@/lib/setup';
 
 type Status = SetupStatus & { demo: boolean };
@@ -40,15 +40,19 @@ function Step({ n, done, title, children }: { n: number; done: boolean; title: s
 function LoadStep({ kind, n, count, enabled, onLoaded }: { kind: Kind; n: number; count: number; enabled: boolean; onLoaded: () => void }) {
   const label = kind === 'tires' ? 'Tires' : 'Wheels';
   const [book, setBook] = useState<Sheet[] | null>(null);
-  const [tab, setTab] = useState(0);
+  const [picks, setPicks] = useState<TabPick[]>([]);
   const [prev, setPrev] = useState<LoadPreview | null>(null);
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
   const [done, setDone] = useState('');
 
-  async function check(sheets: Sheet[], i: number) {
-    setPrev(null); setErr(''); setDone(''); setBusy('Reading…');
-    try { setPrev(await call<LoadPreview>('/api/setup/load', { kind, source: sheets[i].name, cells: sheets[i].rows, dryRun: true })); }
+  const chosen = (ps: TabPick[], sheets: Sheet[]) => ps.filter(p => p.on).map(p => ({ source: sheets[p.i].name, cells: sheets[p.i].rows }));
+  async function check(sheets: Sheet[], ps: TabPick[]) {
+    setPrev(null); setErr(''); setDone('');
+    const list = chosen(ps, sheets);
+    if (!list.length) { setErr(`Tick at least one tab with ${kind}.`); return; }
+    setBusy('Reading…');
+    try { setPrev(await call<LoadPreview>('/api/setup/load', { kind, sheets: list, dryRun: true })); }
     catch (e) { setErr((e as Error).message); }
     setBusy('');
   }
@@ -57,17 +61,23 @@ function LoadStep({ kind, n, count, enabled, onLoaded }: { kind: Kind; n: number
     try {
       const sheets = await readSheetFile(f);
       if (!sheets.length) throw new Error('That file is empty.');
-      // In a workbook, start on the tab that looks like this kind ("Tires", "Wheel stock"...).
-      const i = Math.max(0, sheets.findIndex(s => (kind === 'tires' ? /tire|tyre/i : /wheel|rim/i).test(s.name)));
-      setBook(sheets); setTab(i); await check(sheets, i);
+      // A workbook often splits stock over tabs (Used Tires, New tires, Singles): tick every tab that holds this kind.
+      const ps = sheets.length === 1 ? [{ i: 0, name: sheets[0].name, rows: sheets[0].rows.length, on: true, why: '' }] : suggestTabs(sheets, kind);
+      setBook(sheets); setPicks(ps); await check(sheets, ps);
     } catch (e) { setErr((e as Error).message); }
+  }
+  function toggle(i: number) {
+    if (!book) return;
+    const ps = picks.map(p => (p.i === i ? { ...p, on: !p.on } : p));
+    setPicks(ps); check(book, ps);
   }
   async function load() {
     if (!book || !prev) return;
-    if (count && !window.confirm(`This replaces the ${count} ${kind} rows already loaded with ${prev.rows} from "${book[tab].name}". Continue?`)) return;
+    const list = chosen(picks, book);
+    if (count && !window.confirm(`This replaces the ${count} ${kind} rows already loaded with ${prev.rows} from ${list.map(l => `"${l.source}"`).join(', ')}. Continue?`)) return;
     setBusy('Loading…'); setErr('');
     try {
-      const r = await call<LoadPreview & { loaded: boolean }>('/api/setup/load', { kind, source: book[tab].name, cells: book[tab].rows, dryRun: false });
+      const r = await call<LoadPreview & { loaded: boolean }>('/api/setup/load', { kind, sheets: list, dryRun: false });
       if (!r.loaded) throw new Error(r.block || 'Nothing was loaded.');
       setDone(`${r.rows} ${kind} loaded (${r.qty} on hand).`); setBook(null); setPrev(null); onLoaded();
     } catch (e) { setErr((e as Error).message); }
@@ -76,15 +86,25 @@ function LoadStep({ kind, n, count, enabled, onLoaded }: { kind: Kind; n: number
 
   return (
     <Step n={n} done={count > 0} title={`${label}${count ? `: ${count} rows loaded` : ''}`}>
-      <p>Upload your {kind} spreadsheet (CSV or Excel, one header row). Rows are cleaned the same way as the Google Sheets sync:
-        sizes, prices per set, DOT codes and so on. {count ? 'Loading again replaces what is there.' : ''}</p>
+      <p>Upload your {kind} spreadsheet (CSV or Excel, one header row). In a workbook, every tab with {kind} is loaded together.
+        Rows are cleaned the same way as the Google Sheets sync: sizes, brands, prices per set, DOT codes, and sold or
+        returned rows are left out. {count ? 'Loading again replaces what is there.' : ''}</p>
       {enabled ? (
         <label className="imp-file">Choose {kind} file
           <input type="file" accept=".csv,.tsv,.txt,.xlsx,.xls,.ods" onChange={e => { const f = e.target.files?.[0]; if (f) pick(f); e.target.value = ''; }} />
         </label>
       ) : <p className="gen">Finish the steps above first.</p>}
       {book && book.length > 1 && (
-        <div className="imp-tabs">{book.map((s, i) => <button key={s.name} aria-pressed={i === tab} onClick={() => { setTab(i); check(book, i); }}>{s.name}</button>)}</div>
+        <div className="su-tabs">
+          <div className="gen">Tabs to load into {kind}:</div>
+          {picks.map(p => (
+            <label key={p.i} className={`su-tab${p.on ? ' on' : ''}`}>
+              <input type="checkbox" checked={p.on} onChange={() => toggle(p.i)} /> <b>{p.name}</b>
+              {p.on && prev ? (() => { const t = prev.tabs.find(x => x.source === p.name); return t ? <span className="gen"> {t.rows} rows, {t.qty} on hand{t.gone ? `, ${t.gone} sold/returned left out` : ''}{t.rejected ? `, ${t.rejected} can't be read` : ''}</span> : null; })()
+                : <span className="gen"> {p.why || `${p.rows} rows`}</span>}
+            </label>
+          ))}
+        </div>
       )}
       {busy && <p className="gen">{busy}</p>}
       {prev && (
@@ -92,13 +112,13 @@ function LoadStep({ kind, n, count, enabled, onLoaded }: { kind: Kind; n: number
           <div className="imp-stats">
             <div><b>{prev.rows}</b><span>ready ({prev.qty} on hand)</span></div>
             <div className={prev.rejected ? 'bad' : ''}><b>{prev.rejected}</b><span>can&apos;t be read</span></div>
-            <div><b>{prev.warnings}</b><span>to check</span></div>
+            <div><b>{prev.gone}</b><span>sold / returned, left out</span></div>
           </div>
           {prev.block ? <p className="bad">{prev.block}</p> : (
             <>
               {prev.problems.length > 0 && (
                 <details><summary>{prev.rejected} row{prev.rejected === 1 ? '' : 's'} won&apos;t load. Fix them in the sheet, or use <a href="/import">/import</a> to fix them with Claude.</summary>
-                  <ul>{prev.problems.map(p => <li key={p.row}><b>Row {p.row}</b>: {p.msg} <span className="gen">({p.cells})</span></li>)}</ul>
+                  <ul>{prev.problems.map(p => <li key={`${p.tab}-${p.row}`}><b>{prev.tabs.length > 1 ? `${p.tab} row` : 'Row'} {p.row}</b>: {p.msg} <span className="gen">({p.cells})</span></li>)}</ul>
                 </details>
               )}
               <button className="primary" onClick={load} disabled={!!busy}>Load {prev.rows} {kind} into the counter</button>

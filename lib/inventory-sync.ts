@@ -2,7 +2,7 @@
 // importer page, replaces each table in one transaction, and writes rejected rows to a "Sync issues" tab
 // so staff can see what to fix. Used by POST /api/sync/sheets (schedule) and the /sync page (Sync now).
 import { createHash } from 'node:crypto';
-import { findHeaderRow, autoMap, cleanAll, REQUIRED_FIELDS, FIELD_LABELS,
+import { findHeaderRow, autoMap, cleanAll, tabHint, REQUIRED_FIELDS, FIELD_LABELS,
   type Kind, type Cleaned, type TireRow, type WheelRow } from './inventory-clean';
 import type { SheetsClient } from './google-sheets';
 
@@ -31,7 +31,7 @@ export function cleanTab(tab: string, kind: Kind, values: string[][]): TabResult
   const map = autoMap(headers, kind);
   const missing = REQUIRED_FIELDS[kind].filter(g => !g.some(f => map[f] !== undefined)).map(g => FIELD_LABELS[g[0]]);
   // Sheet rows are 1-based; cleanAll numbers the first body row 2, so shift by the header's position.
-  const cleaned = missing.length ? [] : cleanAll(kind, headers, body, map).map(c => ({ ...c, sourceRow: c.sourceRow + h }));
+  const cleaned = missing.length ? [] : cleanAll(kind, headers, body, map, tabHint(tab)).map(c => ({ ...c, sourceRow: c.sourceRow + h }));
   return { tab, kind, headerRow: h + 1, missing, cleaned };
 }
 

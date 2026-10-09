@@ -15,7 +15,7 @@ export async function POST(req: Request) {
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json({ error: 'ANTHROPIC_API_KEY is not set. Add it in Vercel > Settings > Environment Variables and redeploy.' }, { status: 503 });
   }
-  const body = await req.json().catch(() => null) as { kind?: string; headers?: unknown; rows?: unknown } | null;
+  const body = await req.json().catch(() => null) as { kind?: string; headers?: unknown; rows?: unknown; tab?: unknown } | null;
   const kind = body?.kind === 'wheels' ? 'wheels' : body?.kind === 'tires' ? 'tires' : null;
   const headers = Array.isArray(body?.headers) ? (body!.headers as unknown[]).map(h => String(h ?? '').slice(0, 80)).slice(0, 60) : null;
   const rows = Array.isArray(body?.rows) ? (body!.rows as { sourceRow?: unknown; cells?: unknown }[])
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
   if (!kind || !headers || !rows?.length) return NextResponse.json({ error: 'kind, headers and rows are required' }, { status: 400 });
   if (rows.length > MAX_ROWS) return NextResponse.json({ error: `At most ${MAX_ROWS} rows at a time.` }, { status: 413 });
   try {
-    return NextResponse.json(await cleanWithClaude(kind, headers, rows));
+    return NextResponse.json(await cleanWithClaude(kind, headers, rows, undefined, typeof body?.tab === 'string' ? body.tab : ''));
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 502 });
   }

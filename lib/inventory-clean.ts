@@ -5,10 +5,10 @@ export type Kind = 'tires' | 'wheels';
 export type Issue = { field: string; level: 'error' | 'warn'; msg: string };
 
 // ---------------------------------------------------------------- field definitions
-export const TIRE_FIELDS = ['size', 'width', 'aspect', 'rim', 'brand', 'model', 'description', 'season', 'condition', 'tread',
-  'loadSpeed', 'loadIndex', 'speedRating', 'xl', 'dot', 'qty', 'price', 'location', 'notes'] as const;
-export const WHEEL_FIELDS = ['wheelSize', 'diameter', 'width', 'offset', 'boltPattern', 'centerBore', 'type', 'condition',
-  'grade', 'description', 'brand', 'finish', 'lugSeat', 'tpms', 'qty', 'price', 'location', 'notes'] as const;
+export const TIRE_FIELDS = ['size', 'width', 'aspect', 'rim', 'brandModel', 'brand', 'model', 'description', 'season', 'condition', 'tread',
+  'loadSpeed', 'loadIndex', 'speedRating', 'xl', 'dot', 'qty', 'price', 'cost', 'status', 'location', 'notes'] as const;
+export const WHEEL_FIELDS = ['wheelSpec', 'wheelSize', 'diameter', 'width', 'offset', 'boltPattern', 'centerBore', 'type', 'condition',
+  'grade', 'description', 'brand', 'finish', 'lugSeat', 'tpms', 'qty', 'price', 'cost', 'status', 'location', 'notes'] as const;
 export type TireField = typeof TIRE_FIELDS[number];
 export type WheelField = typeof WHEEL_FIELDS[number];
 
@@ -18,27 +18,31 @@ export const FIELD_LABELS: Record<string, string> = {
   loadIndex: 'Load index', speedRating: 'Speed rating', xl: 'XL', dot: 'DOT', qty: 'Qty', price: 'Price',
   location: 'Location', notes: 'Notes', wheelSize: 'Wheel size', diameter: 'Diameter', offset: 'Offset',
   boltPattern: 'Bolt pattern', centerBore: 'Center bore', type: 'Steel/alloy', grade: 'Grade', finish: 'Finish',
-  lugSeat: 'Lug seat', tpms: 'TPMS',
+  lugSeat: 'Lug seat', tpms: 'TPMS', brandModel: 'Brand + model', cost: 'Cost', status: 'Status',
+  wheelSpec: 'Size / bolt pattern / bore', location2: 'Location', location3: 'Location',
 };
 
 /** Columns a sheet can't do without. Each group needs at least one of its fields mapped. */
 export const REQUIRED_FIELDS: Record<Kind, string[][]> = {
   tires: [['size', 'description', 'width']],
-  wheels: [['wheelSize', 'diameter', 'description'], ['boltPattern', 'description']],
+  wheels: [['wheelSize', 'wheelSpec', 'diameter', 'description'], ['boltPattern', 'wheelSpec', 'description']],
 };
 
 // Header words that point to each field. Checked against lowercased headers with punctuation removed.
 const SYN: Record<string, RegExp> = {
   size: /^(tire\s*)?size$|^tyre\s*size$|^size\b|dimension/,
   width: /^(section\s*)?width$|^w$/, aspect: /^(aspect|profile|ratio|series)/, rim: /^(rim|wheel)(\s*(size|dia(meter)?))?$|^r$/,
+  brandModel: /^brand\s*(\/|and)?\s*model$/,
   brand: /^(brand|make|manufacturer|mfr)$/, model: /^(model|pattern|tread\s*(name|pattern)|line)$/,
-  description: /^(desc(ription)?|item|product|name|tire|tyre|wheel|rim)$/,
-  season: /^(season|type|category|kind)$/, condition: /^(new\s*\/?\s*used|n\s*\/\s*u|condition|cond|new|used|status)$/,
+  description: /^(desc(ription)?|item|product|name|tire|tyre|wheel|rim|brand\s*\/?\s*style|style)$/,
+  season: /^(season|type|category|kind)$/, condition: /^(new\s*\/?\s*used|n\s*\/\s*u|condition|cond|new|used)$/,
+  status: /^(stock\s*)?status$/,
   tread: /tread|depth|32nds|^mm$/, loadSpeed: /load\s*\/?\s*speed|service|^li\s*\/?\s*sr$/,
   loadIndex: /^(load(\s*index)?|li)$/, speedRating: /^(speed(\s*(rating|index|symbol))?|sr)$/,
-  xl: /^(xl|extra\s*load|reinforced|rf)$/, dot: /^(dot|date|dot\s*code|year|age)/,
-  qty: /^(qty|quantity|count|on\s*hand|stock|units|pcs|#)$/, price: /price|sell|retail|each|\bea\b|\$|cost/,
-  location: /loc|rack|bin|shelf|where|spot|bay|aisle/, notes: /note|comment|remark/,
+  xl: /^(xl|extra\s*load|reinforced|rf)$/, dot: /^(dot|year|age|mfg)/,
+  qty: /^(qty|quantity|count|on\s*hand|stock|units|pcs|#)$/, price: /price|sell|retail|each|\bea\b|\$|cost/, cost: /cost|price\s*per\s*unit|unit\s*price/,
+  location: /loc|rack|bin|shelf|where|spot|bay|aisle|container|^area$|^zone$/, notes: /note|comment|remark/,
+  wheelSpec: /(size|dia).*(bolt|pcd)|(bolt|pcd).*(size|dia)/,
   wheelSize: /^(wheel|rim)\s*size$|^size$/, diameter: /^(dia(meter)?|rim(\s*size)?|inch|in)$/, offset: /^(offset|et)$/,
   boltPattern: /bolt|pcd|lug\s*pattern|pattern/, centerBore: /bore|^cb$|hub/,
   type: /^(type|material|steel\s*\/?\s*alloy|alloy\s*\/?\s*steel)$/, grade: /^(grade|cosmetic|quality)$/,
@@ -51,21 +55,40 @@ export function autoMap(headers: string[], kind: Kind): Record<string, number> {
   const norm = headers.map(h => String(h ?? '').toLowerCase().replace(/[^a-z0-9$#/\s]/g, ' ').replace(/\s+/g, ' ').trim());
   const map: Record<string, number> = {};
   const used = new Set<number>();
-  // Specific fields first, so "Load/Speed" isn't taken by "speed" and "Wheel size" isn't taken by "wheel".
+  const take = (f: string, i: number) => { map[f] = i; used.add(i); };
+  // A column named exactly after a field wins first, so "Season" beats "Type" for the season and "Condition" beats
+  // "Status" for new/used, wherever they sit in the sheet.
+  for (const f of fields) {
+    const i = norm.findIndex((h, idx) => !used.has(idx) && (EXACT[f] ?? []).includes(h));
+    if (i >= 0) take(f, i);
+  }
+  // Then by header words. Specific fields first, so "Load/Speed" isn't taken by "speed" and "Wheel size" by "wheel".
   const order = [...fields].sort((a, b) => priority(a) - priority(b));
   for (const f of order) {
-    const re = SYN[f]; if (!re) continue;
+    const re = SYN[f]; if (!re || map[f] !== undefined || f === 'cost') continue;
     const i = norm.findIndex((h, idx) => !used.has(idx) && h && re.test(h));
-    if (i >= 0) { map[f] = i; used.add(i); }
+    if (i >= 0) take(f, i);
   }
   // "Price" columns: prefer one that says sell/retail over cost
   if (map.price !== undefined && /cost/.test(norm[map.price])) {
     const better = norm.findIndex((h, idx) => !used.has(idx) && /price|sell|retail/.test(h));
     if (better >= 0) { used.delete(map.price); map.price = better; used.add(better); }
   }
+  // A purchasing sheet (supplier, PO, invoice) with a plain "Price Per Unit" or "Cost" column: that's what the shop
+  // paid, not what it charges. It goes in the notes, never on a quote.
+  const buying = norm.some(h => /supplier|vendor|invoice|^po\b|purchase/.test(h));
+  if (map.price !== undefined && (buying || /cost/.test(norm[map.price])) && !/sell|retail/.test(norm[map.price])) { map.cost = map.price; delete map.price; }
+  // Where a tire sits is often split over columns (container, area, shelf): keep up to three, left to right.
+  const locs = norm.map((h, i) => [h, i] as const).filter(([h, i]) => (!used.has(i) || map.location === i) && h && SYN.location.test(h)).map(([, i]) => i);
+  locs.slice(0, 3).forEach((i, n) => { map[n ? `location${n + 1}` : 'location'] = i; used.add(i); });
   return map;
 }
-const priority = (f: string) => ['loadSpeed', 'wheelSize', 'boltPattern', 'centerBore', 'size', 'tread', 'dot', 'xl', 'lugSeat', 'tpms']
+const EXACT: Record<string, string[]> = {
+  season: ['season'], condition: ['condition', 'new/used', 'new used', 'n/u', 'cond'], status: ['status'], brand: ['brand'],
+  size: ['size', 'tire size', 'tyre size'], qty: ['qty', 'quantity'], dot: ['dot', 'dot year', 'dot code'], notes: ['notes', 'note'],
+  type: ['type'], brandModel: ['brand model', 'brand/model', 'brand and model'], description: ['description', 'brand/style'],
+};
+const priority = (f: string) => ['wheelSpec', 'brandModel', 'loadSpeed', 'wheelSize', 'boltPattern', 'centerBore', 'size', 'tread', 'dot', 'xl', 'lugSeat', 'tpms']
   .includes(f) ? 0 : ['description'].includes(f) ? 2 : 1;
 
 /** Tires or wheels? Looks at headers first, then at what the cells contain. */
@@ -90,7 +113,7 @@ export type TireSize = { size: string; width: number; aspect: number; rim: numbe
 /** "225/65R17", "225 65 17", "2256517", "P225/65ZR17", "LT245/75R16 120/116S", "225-65-17 102H XL" */
 export function parseTireSize(v: unknown): TireSize | null {
   const s = clean(v).toUpperCase();
-  const m = s.match(/(?:^|[^\d])(P|LT|ST)?\s*(\d{3})\s*[\/\s\-.]?\s*(\d{2})\s*[\/\s\-]?\s*(Z?R|D|B|-|\/|\s)?\s*(\d{2})(?!\d)/);
+  const m = s.match(/(?:^|[^\d])(P|LT|ST)?\s*(\d{3})\s*[\/\s\-.,:]?\s*(\d{2})\s*[\/\s\-]?\s*(Z?R|D|B|-|\/|\s)?\s*(\d{2})(?!\d)/);
   if (!m) return null;
   const width = +m[2], aspect = +m[3], rim = +m[5];
   if (width < 125 || width > 395 || width % 5 !== 0 || aspect < 25 || aspect > 85 || aspect % 5 !== 0 || rim < 12 || rim > 26) return null;
@@ -112,9 +135,9 @@ export function parseLoadSpeed(v: unknown): { loadIndex?: number; loadIndexDual?
 }
 
 const SEASON_WORDS: [RegExp, 'W' | 'AW' | 'AS' | 'S'][] = [
-  [/all[\s-]*weather|\baw\b|4[\s-]*season|four[\s-]*season|crossclimate|weatherready|celsius|quatrac|weather\s*pro|wintercontact\s*ts|solus\s*4s/i, 'AW'],
-  [/winter|snow|ice|\bw\b|blizzak|x-?ice|hakka|observe|winterforce|wintermaxx|arctic|studd|ws\d|i\*?pike|alpin|frost|nordic|iceguard|winter\s*claw/i, 'W'],
-  [/all[\s-]*season|\ba\/?s\b|\bm\+?s\b|touring|defender|assurance|turanza|alenza|latitude|ecsta\s*pa|pure\s*contact|crosscontact/i, 'AS'],
+  [/all[\s-]*weather|\baw\b|4[\s-]*season|four[\s-]*season|cross\s*climate|weatherready|celsius|quatrac|weather\s*pro|wintercontact\s*ts|solus\s*4s|weatherpeak|ultraweather|weatherflex|weathergrip|tracsaver|eurotraxx|g\s*fit\s*4s|securecontact\s*aw|altimax\s*365/i, 'AW'],
+  [/winter|snow|ice|\bw\b|blizzak|x-?ice|hakka|observe|winterforce|wintermaxx|arctic|studd|ws\d|i\*?pike|alpin|frost|nordic|iceguard|winter\s*claw|viking|wintrac|i\*?\s*cept|winguard|ultra\s*grip|polar/i, 'W'],
+  [/all[\s-]*season|\ba\/?s\b|\bm\+?s\b|touring|defender|assurance|turanza|alenza|latitude|ecsta\s*pa|pure\s*contact|crosscontact|kinergy|primacy|truecontact|extremecontact|cinturato|scorpion|sincera|extensa|procontact|dynapro|kumho\s*ht|\bh\/?t\b/i, 'AS'],
   [/summer|\bs\b|performance|pilot\s*sport\s*[45](?!\s*all)|potenza|p\s*zero(?!.*all)|eagle\s*f1/i, 'S'],
 ];
 export function parseSeason(v: unknown): 'W' | 'AW' | 'AS' | 'S' | null {
@@ -150,8 +173,10 @@ export function parseQty(v: unknown): { qty: number; ok: boolean } {
   if (!s) return { qty: 0, ok: true };
   if (/^(set|set of 4)$/.test(s)) return { qty: 4, ok: true };
   if (/^pair$/.test(s)) return { qty: 2, ok: true };
+  if (/^\d{1,4}[\/-]\d{1,2}[\/-]\d{1,4}/.test(s)) return { qty: 0, ok: false };   // a date: Excel turned "1/2" into one
+  if (/^\d+\s*\+\s*\d+/.test(s)) return { qty: (s.match(/\d+/g) ?? []).reduce((a, b) => a + +b, 0), ok: true };   // "2 + 2"
   const m = s.match(/-?\d+/); if (!m) return { qty: 0, ok: false };
-  const n = +m[0]; return n < 0 ? { qty: 0, ok: false } : { qty: n, ok: true };
+  const n = +m[0]; return n < 0 || n > 9999 ? { qty: 0, ok: false } : { qty: n, ok: true };
 }
 
 /** "$229.00", "229", "229 ea", "$800/set" (per tire = 200) */
@@ -172,7 +197,7 @@ export function parseBool(v: unknown): boolean | null {
 /** "new", "N", "used", "U", "takeoff" (used, near new). Falls back on tread. */
 export function parseCondition(v: unknown, tread: number | null): 'new' | 'used' | null {
   const s = clean(v).toLowerCase();
-  if (/^(n|new|brand new|bnew)$/.test(s)) return 'new';
+  if (/^(n|new|brand new|bnew|nos|new old stock)$/.test(s)) return 'new';
   if (/^(u|used|take[\s-]?off|takeoff|tof|pre[\s-]?owned|2nd|second)/.test(s)) return 'used';
   if (tread !== null) return tread > 0 ? 'used' : 'new';
   return null;
@@ -254,6 +279,74 @@ export function parseLugSeat(v: unknown): 'conical' | 'ball' | 'flat' | null {
   return null;
 }
 
+/** Rows that aren't stock any more. Left out quietly (they show as skipped, with the reason). */
+export const GONE_STATUS = /^(sold|scrapped|returned|waiting\s*(to|for)\s*return|marked\s*for\s*return|can'?t\s*find|missing|lost|abandoned|written\s*off)\b/i;
+
+// Brands as people type them, and models typed without their brand.
+const BRAND_ALIAS: [RegExp, string, string?][] = [
+  [/^bf\s*goodrich\b/i, 'BFGoodrich'], [/^good\s*year\b/i, 'Goodyear'], [/^michell?in\b/i, 'Michelin'], [/^pir+ell?[il]i?9?\b|^pireli\b/i, 'Pirelli'],
+  [/^gt\s*radial\b/i, 'GT Radial'], [/^i-?link\b/i, 'iLink'], [/^iron\s*man\b/i, 'Ironman'], [/^general(\s+tire)?\b/i, 'General'],
+  [/^yok?l?oh[oa]ma\b/i, 'Yokohama'], [/^laufenn?\b/i, 'Laufenn'], [/^moto\s*master\b/i, 'MotoMaster'], [/^ver?ed?stein\b/i, 'Vredestein'],
+  [/^trac?k?max\b/i, 'Tracmax'], [/^west\s*lake\b/i, 'Westlake'], [/^(hitech\s+)?double\s*st(ar)?\b|^doublest\b/i, 'Doublestar'],
+  [/^v-?i?tour\b/i, 'Vitour'], [/^nexen\b/i, 'Nexen'], [/^mazz?ini\b/i, 'Mazzini'], [/^continental\b/i, 'Continental'],
+  [/^dueler\b/i, 'Bridgestone', 'Dueler'], [/^fire\s*hawk\b/i, 'Firestone', 'Firehawk'], [/^n'?fera\b|^nefra\b/i, 'Nexen', "N'Fera"],
+  [/^solus\b/i, 'Kumho', 'Solus'], [/^prxes\b|^proxes\b/i, 'Toyo', 'Proxes'], [/^sottozero\b/i, 'Pirelli', 'Sottozero'],
+  [/^sincera\b/i, 'Falken', 'Sincera'], [/^privilo\b/i, 'Tracmax', 'Privilo'], [/^tiger\s*paw\b/i, 'Uniroyal', 'Tiger Paw'],
+];
+const NOT_A_BRAND = /^(n\/?a|none|unknown|chinese|staggered|generic|-+|\?+)$/i;
+const tidy = (s: string) => (s.length > 3 && (s === s.toLowerCase() || (s === s.toUpperCase() && !/\d/.test(s))) ? s.toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase()) : s);
+/** "Bridgestone Blizzak Icepeak" -> Bridgestone / Blizzak Icepeak. "Pireli pZero" -> Pirelli / Pzero. Unknown brands: first word. */
+export function splitBrandModel(text: string): { brand: string | null; model: string | null } {
+  const s = clean(text).replace(/\*?run\s*-?flat\*?|\(all weather\)/ig, '').replace(/\s+/g, ' ').trim();
+  if (!s || NOT_A_BRAND.test(s)) return { brand: null, model: null };
+  for (const [re, brand, model] of BRAND_ALIAS) {
+    const m = s.match(re);
+    if (m) { const rest = tidy(s.slice(m[0].length).trim()); return { brand, model: [model, rest].filter(Boolean).join(' ') || null }; }
+  }
+  const known = findBrand(s);
+  if (known && s.toLowerCase().replace(/\s/g, '').startsWith(known.toLowerCase().replace(/\s/g, ''))) {
+    const rest = s.replace(new RegExp(`^${known.replace(/\s/g, '\\s*')}`, 'i'), '').trim();
+    return { brand: known, model: rest ? tidy(rest) : null };
+  }
+  const [first, ...rest] = s.split(' ');
+  return { brand: tidy(first), model: rest.length ? tidy(rest.join(' ')) : null };
+}
+
+/** One cell holding the whole wheel: "18/5x112/66.6", "16/4x107x68 cb", "18/5x108/114.3/72.62" (dual drilled),
+ *  "17/5/120x67", "18x9 8x180 124.2", "18/7x5/112x62" (18x7, 5x112). */
+export function parseWheelSpec(v: unknown): { diameter: number; width: number | null; bolts: string[]; cb: number | null } | null {
+  const s = clean(v).toLowerCase().replace(/cb|mm|mlt/g, ' ').replace(/["”″]/g, '/').replace(/([+-])\s+(\d)/g, '$1$2').trim()
+    .replace(/\s*\/\s*|\s+/g, '/')
+    .replace(/\/(?:et[+-]?\d{1,2}|[+-]\d{1,2})$/, '')
+    .replace(/^(\d{2})\/(\d)\/(\d{3})/, '$1/$2x$3')
+    .replace(/^(\d{2})\/(\d{1,2}(?:\.\d)?)x(\d)\/(\d{3})/, '$1x$2/$3x$4')
+    .replace(/\/+$/, '');
+  const m = s.match(/^(\d{2}(?:\.\d)?)(?:x(\d{1,2}(?:\.\d)?))?[\/x](\d{1,2})x(\d{2,3}(?:\.\d+)?)(.*)$/);
+  if (!m) return null;
+  const diameter = +m[1], width = m[2] && +m[2] >= 3 && +m[2] <= 14 ? +m[2] : null, lugs = +m[3];
+  if (diameter < 12 || diameter > 26) return null;
+  const r1 = (x: number) => Math.round(x * 10) / 10;
+  const bolts = parseBoltPatterns(`${lugs}x${m[4]}`);
+  if (!bolts.length) return null;
+  const nums = [...m[5].replace(/^x/, '/').matchAll(/\d+(?:\.\d+)?/g)].map(x => +x[0]);
+  let cb: number | null = null;
+  nums.forEach((x, i) => {
+    if (i < nums.length - 1 && x >= 98 && x <= 140) { const alt = parseBoltPatterns(`${lugs}x${x}`)[0]; if (alt && !bolts.includes(alt)) bolts.push(alt); }
+    else if (i === nums.length - 1 && x >= 40 && x <= 180) cb = r1(x);
+  });
+  return { diameter, width, bolts, cb };
+}
+
+/** Hints from the tab name: a "Used Tires" tab is used stock, "Steel rims" are steel, and so on. */
+export type TabHint = { condition?: 'new' | 'used'; wheelType?: 'alloy' | 'steel' };
+export function tabHint(name: string): TabHint {
+  const s = name.toLowerCase();
+  return {
+    condition: /\bused\b|single|take[\s-]?off/.test(s) ? 'used' : /\bnew\b/.test(s) ? 'new' : undefined,
+    wheelType: /steel/.test(s) ? 'steel' : /alloy/.test(s) ? 'alloy' : undefined,
+  };
+}
+
 // ---------------------------------------------------------------- row cleaning
 export type TireRow = { tire_size: string; section_width: number; aspect_ratio: number; rim_diameter: number; is_lt: boolean;
   brand: string | null; model: string | null; season: string | null; condition: 'new' | 'used'; tread_32nds: number | null;
@@ -269,16 +362,22 @@ const get = (cells: string[], map: Record<string, number>, f: string) => (map[f]
 const nz = (s: string) => s || null;
 const isBlank = (cells: string[]) => cells.every(c => !clean(c));
 
-export function cleanTire(cells: string[], map: Record<string, number>, sourceRow: number, headers: string[]): Cleaned<TireRow> {
+export function cleanTire(cells: string[], map: Record<string, number>, sourceRow: number, headers: string[], hint: TabHint = {}): Cleaned<TireRow> {
   const raw = Object.fromEntries(headers.map((h, i) => [h || `col${i + 1}`, clean(cells[i])]).filter(([, v]) => v));
   const issues: Issue[] = [];
   if (isBlank(cells)) return { sourceRow, raw, row: null, issues, skipped: true };
   const g = (f: string) => get(cells, map, f);
+  const status = g('status');
+  if (GONE_STATUS.test(status)) return { sourceRow, raw, row: null, issues: [{ field: 'status', level: 'warn', msg: `${status}: left out` }], skipped: true };
   const desc = g('description');
-  const allText = [g('size'), g('brand'), g('model'), desc].join(' ');
+  const bm = g('brandModel') ? splitBrandModel(g('brandModel')) : null;
+  let sizeCell = g('size');
+  // Brand and size typed in each other's column
+  if (!parseTireSize(sizeCell) && bm && parseTireSize(g('brandModel'))) sizeCell = g('brandModel');
+  const allText = [sizeCell, g('brand'), g('model'), g('brandModel'), desc].join(' ');
 
   // size: own column, else width/aspect/rim columns, else anywhere in the description
-  let ts = parseTireSize(g('size'));
+  let ts = parseTireSize(sizeCell);
   if (!ts && g('width') && g('aspect') && g('rim')) ts = parseTireSize(`${g('width')}/${g('aspect')}R${g('rim').replace(/\D/g, '')}`);
   if (!ts && desc) { ts = parseTireSize(desc); if (ts) issues.push({ field: 'size', level: 'warn', msg: `Size read from description` }); }
   if (!ts) {
@@ -295,19 +394,21 @@ export function cleanTire(cells: string[], map: Record<string, number>, sourceRo
   if (loadIndex === null) issues.push({ field: 'loadIndex', level: 'warn', msg: 'No load index. The counter can\'t check it against OE.' });
 
   const tread = parseTread(g('tread'));
-  let condition = parseCondition(g('condition'), tread);
+  let condition = parseCondition(g('condition'), tread) ?? hint.condition ?? null;
   if (!condition) { condition = 'new'; if (g('condition')) issues.push({ field: 'condition', level: 'warn', msg: `"${g('condition')}" read as new` }); }
   if (condition === 'used' && tread === null) issues.push({ field: 'tread', level: 'warn', msg: 'Used tire with no tread depth' });
   if (condition === 'used' && tread !== null && tread <= 4) issues.push({ field: 'tread', level: 'warn', msg: `${tread}/32" is at or below the 4/32" winter minimum` });
 
-  let brand = nz(g('brand')) ?? findBrand(allText);
-  let model = nz(g('model'));
+  const named = g('brand') ? splitBrandModel(`${g('brand')} ${g('model')}`) : null;
+  let brand = named ? named.brand : bm ? bm.brand : findBrand(allText);
+  let model = named ? named.model : bm ? bm.model : null;
   if (!model && desc) {
     // "Michelin X-Ice Snow SUV 225/65R17 102T" -> "X-Ice Snow SUV"
     model = desc.replace(BRAND_RE, '').replace(/(P|LT)?\s*\d{3}\s*[\/\s-]?\s*\d{2}\s*[\/\s-]?\s*Z?R?\s*\d{2}.*$/i, '').replace(/\s{2,}/g, ' ').trim() || null;
   }
   let season = parseSeason(g('season'));
-  if (!season) { season = parseSeason(`${model ?? ''} ${desc}`); if (season && g('season')) issues.push({ field: 'season', level: 'warn', msg: `"${g('season')}" not understood; guessed from the model` }); }
+  if (!season) { season = parseSeason(`${model ?? ''} ${desc}`) ?? parseSeason(g('notes')); if (season && g('season')) issues.push({ field: 'season', level: 'warn', msg: `"${g('season')}" not understood; guessed from the model` }); }
+  if (!season && /\bwinter\b/i.test([g('location'), g('location2'), g('location3')].join(' '))) season = 'W';   // kept on the winter rack
   if (!season) issues.push({ field: 'season', level: 'warn', msg: 'Season unknown' });
 
   const q = parseQty(g('qty'));
@@ -321,51 +422,68 @@ export function cleanTire(cells: string[], map: Record<string, number>, sourceRo
   if (dotYear !== null && new Date().getFullYear() - dotYear >= 6) issues.push({ field: 'dot', level: 'warn', msg: `Tire is ${new Date().getFullYear() - dotYear} years old` });
 
   const xl = parseBool(g('xl')) ?? ts.xl ?? /\bXL\b|extra\s*load|\bRF\b|reinforced/i.test(`${g('loadSpeed')} ${g('loadIndex')} ${desc} ${g('model')}`);
+  const notes = extraNotes(g, status);
   return {
     sourceRow, raw, issues: q.ok ? issues : issues,
     row: q.ok ? {
       tire_size: ts.size, section_width: ts.width, aspect_ratio: ts.aspect, rim_diameter: ts.rim, is_lt: ts.isLt,
       brand, model, season, condition, tread_32nds: condition === 'new' ? 0 : tread,
       load_index: loadIndex, load_index_dual: ls.loadIndexDual ?? null, speed_rating: speedRating, is_xl: xl,
-      dot_year: dotYear, qty: q.qty, price: p.price, location: nz(g('location')), notes: nz(g('notes')),
+      dot_year: dotYear, qty: q.qty, price: p.price, location: place(g), notes,
     } : null,
   };
 }
+/** Location over up to three columns ("NYK3", "Left", "Left Front"), repeats dropped. */
+function place(g: (f: string) => string): string | null {
+  const out: string[] = [];
+  for (const v of [g('location'), g('location2'), g('location3')]) if (v && !out.some(o => o.toLowerCase() === v.toLowerCase())) out.push(v);
+  return out.join(' · ') || null;
+}
+/** Notes, plus a status worth knowing ("Reserved") and the cost when the sheet has one. */
+function extraNotes(g: (f: string) => string, status: string): string | null {
+  const c = parsePrice(g('cost')).price;
+  const parts = [g('notes'), status && !/^(available|in\s*stock|ok)$/i.test(status) ? status : '', c ? `Cost $${c.toFixed(2)}` : ''].filter(Boolean);
+  return parts.join('; ') || null;
+}
 const pick = (t: TireSize) => ({ loadIndex: t.loadIndex, loadIndexDual: t.loadIndexDual, speedRating: t.speedRating });
 
-export function cleanWheel(cells: string[], map: Record<string, number>, sourceRow: number, headers: string[]): Cleaned<WheelRow> {
+export function cleanWheel(cells: string[], map: Record<string, number>, sourceRow: number, headers: string[], hint: TabHint = {}): Cleaned<WheelRow> {
   const raw = Object.fromEntries(headers.map((h, i) => [h || `col${i + 1}`, clean(cells[i])]).filter(([, v]) => v));
   const issues: Issue[] = [];
   if (isBlank(cells)) return { sourceRow, raw, row: null, issues, skipped: true };
   const g = (f: string) => get(cells, map, f);
+  const status = g('status');
+  if (GONE_STATUS.test(status)) return { sourceRow, raw, row: null, issues: [{ field: 'status', level: 'warn', msg: `${status}: left out` }], skipped: true };
+  const spec = g('wheelSpec') ? parseWheelSpec(g('wheelSpec')) : null;
   const desc = g('description');
   const allText = [g('wheelSize'), g('diameter'), g('width'), g('offset'), g('boltPattern'), g('type'), desc, g('brand')].join(' ');
 
-  let sz = parseWheelSize(g('wheelSize'));
+  let sz = spec ? { diameter: spec.diameter, width: spec.width } : parseWheelSize(g('wheelSize'));
   if (!sz && g('diameter')) {
     const d = parseFloat(g('diameter').replace(/[^\d.]/g, '')); const w = parseFloat(g('width').replace(/[^\d.]/g, ''));
     if (d >= 12 && d <= 26) sz = { diameter: d, width: w >= 3 && w <= 14 ? w : null };
   }
   if (!sz) { sz = parseWheelSize(allText.replace(/\d{1,2}\s*[x×-]\s*\d{3}(\.\d)?/g, ' ')); if (sz) issues.push({ field: 'wheelSize', level: 'warn', msg: 'Size read from description' }); }
 
-  const bolts = parseBoltPatterns(g('boltPattern') || allText.replace(/\d{2}\s*[x×]\s*\d{1,2}(\.\d)?(?!\d)/g, ' '));
+  const bolts = spec ? spec.bolts : parseBoltPatterns(g('boltPattern') || allText.replace(/\d{2}\s*[x×]\s*\d{1,2}(\.\d)?(?!\d)/g, ' '));
   if (!sz && !bolts.length) {
     const looksLikeLabel = !g('qty') && !g('price') && !/\d/.test(allText);
     if (looksLikeLabel) return { sourceRow, raw, row: null, issues, skipped: true };
   }
+  if (!sz && g('wheelSpec') && !spec) { issues.push({ field: 'wheelSpec', level: 'error', msg: `Can't read "${g('wheelSpec')}" as size / bolt pattern / bore` }); return { sourceRow, raw, row: null, issues }; }
   if (!sz) issues.push({ field: 'wheelSize', level: 'error', msg: `Can't read a wheel diameter from "${g('wheelSize') || g('diameter') || desc}"` });
   if (!bolts.length) issues.push({ field: 'boltPattern', level: 'error', msg: `Can't read a bolt pattern from "${g('boltPattern') || desc}"` });
   if (sz && sz.width === null) issues.push({ field: 'width', level: 'warn', msg: 'No rim width' });
 
   const offset = parseOffset(g('offset')) ?? parseOffset((allText.match(/ET\s*-?\+?\d{1,3}/i) || [''])[0]);
   if (offset === null) issues.push({ field: 'offset', level: 'warn', msg: 'No offset. Fit check will be rougher.' });
-  const cb = parseCenterBore(g('centerBore'));
+  const cb = spec ? spec.cb : parseCenterBore(g('centerBore'));
   if (cb === null) issues.push({ field: 'centerBore', level: 'warn', msg: 'No center bore. Measure it, the counter needs it to rule out bad fits.' });
 
-  let type = parseWheelType(g('type')) ?? parseWheelType(desc);
+  let type = parseWheelType(g('type')) ?? parseWheelType(desc) ?? hint.wheelType ?? null;
   if (!type) { type = 'alloy'; issues.push({ field: 'type', level: 'warn', msg: 'Steel or alloy unknown; set to alloy' }); }
   const grade = parseGrade(g('grade'));
-  let condition = parseCondition(g('condition'), null);
+  let condition = parseCondition(g('condition'), null) ?? (/\bnew\b/i.test(`${g('type')} ${g('notes')}`) ? 'new' : null) ?? hint.condition ?? null;
   if (!condition) condition = grade ? 'used' : /oem|used|take[\s-]?off/i.test(desc) ? 'used' : 'new';
 
   const q = parseQty(g('qty'));
@@ -381,15 +499,18 @@ export function cleanWheel(cells: string[], map: Record<string, number>, sourceR
       bolt_pattern: bolts[0], bolt_pattern_alt: bolts[1] ?? null, center_bore: cb, wheel_offset: offset,
       description: nz(desc) ?? nz([g('brand'), g('model')].filter(Boolean).join(' ')), finish: nz(g('finish')),
       lug_seat: parseLugSeat(g('lugSeat')), has_tpms: parseBool(g('tpms')), qty: q.qty, price: p.price,
-      location: nz(g('location')), notes: nz(g('notes')),
+      location: place(g), notes: extraNotes(g, status),
     },
   };
 }
 
-export function cleanAll(kind: Kind, headers: string[], rows: string[][], map: Record<string, number>) {
+export function cleanAll(kind: Kind, headers: string[], rows: string[][], map: Record<string, number>, hint: TabHint = {}) {
   const fn = kind === 'tires' ? cleanTire : cleanWheel;
+  // Wheels: when the type column marks the new ones ("New Alloy Rim") and nothing gives a condition, the rest are used.
+  if (kind === 'wheels' && map.type !== undefined && map.condition === undefined && !hint.condition
+    && rows.some(r => /\bnew\b/i.test(clean(r[map.type])))) hint = { ...hint, condition: 'used' };
   // sheet rows are 1-based and the header is row 1
-  return rows.map((cells, i) => (fn as typeof cleanTire)(cells, map, i + 2, headers) as Cleaned<TireRow | WheelRow>);
+  return rows.map((cells, i) => (fn as typeof cleanTire)(cells, map, i + 2, headers, hint) as Cleaned<TireRow | WheelRow>);
 }
 
 // ---------------------------------------------------------------- SQL output

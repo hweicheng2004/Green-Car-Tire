@@ -17,7 +17,7 @@ const cost = (u: Usage) => ((u.input * 4 + u.output * 20 + u.cacheRead * 0.2) / 
 
 
 
-function analyse(rows: string[][], kindOverride: C.Kind | null) {
+function analyse(rows: string[][], kindOverride: C.Kind | null, tabName = '') {
   const nonEmpty = rows.filter(r => r.some(c => String(c ?? '').trim()));
   if (!nonEmpty.length) return null;
   const h = C.findHeaderRow(rows);
@@ -26,7 +26,7 @@ function analyse(rows: string[][], kindOverride: C.Kind | null) {
   const kind = kindOverride ?? C.detectKind(headers, body);
   const map = C.autoMap(headers, kind);
   const missing = C.REQUIRED_FIELDS[kind].filter(g => !g.some(f => map[f] !== undefined)).map(g => C.FIELD_LABELS[g[0]]);
-  const cleaned = C.cleanAll(kind, headers, body, map).map(c => ({ ...c, sourceRow: c.sourceRow + h }));
+  const cleaned = C.cleanAll(kind, headers, body, map, C.tabHint(tabName)).map(c => ({ ...c, sourceRow: c.sourceRow + h }));
   return { headerIdx: h, headers, body, kind, map, missing, cleaned };
 }
 
@@ -52,7 +52,7 @@ export default function ImportDashboard({ claudeReady, needsPassword }: { claude
   const [filter, setFilter] = useState<'all' | 'problems'>('problems');
 
   const rows = useMemo(() => (book ? book[tab]?.rows ?? [] : text.trim() ? C.parseDelimited(text) : []), [book, tab, text]);
-  const a = useMemo(() => analyse(rows, kindOverride), [rows, kindOverride]);
+  const a = useMemo(() => analyse(rows, kindOverride, book ? book[tab]?.name ?? '' : ''), [rows, kindOverride, book, tab]);
   const reset = () => { setClaude(null); setUsage(null); setError(''); setCopied(''); };
 
   // Rule results, with Claude's answer swapped in for every row Claude handled.
@@ -60,9 +60,11 @@ export default function ImportDashboard({ claudeReady, needsPassword }: { claude
     const fixed = claude?.get(c.sourceRow);
     return fixed ? { ...fixed, origin: 'claude' as const } : { ...c, origin: 'rules' as const };
   }), [a, claude]);
-  const good = lines.filter(l => l.row), bad = lines.filter(l => !l.row && !l.skipped), skipped = lines.filter(l => l.skipped);
+  // Sold / returned rows are skipped on purpose (status column): never a problem, never sent to Claude.
+  const gone = (l: C.Cleaned<unknown>) => !!l.skipped && l.issues.some(i => i.field === 'status');
+  const good = lines.filter(l => l.row), bad = lines.filter(l => !l.row && !l.skipped), skipped = lines.filter(l => l.skipped && !gone(l)), left = lines.filter(gone);
   const fromClaude = good.filter(l => l.origin === 'claude').length;
-  const toSend = !a ? [] : (sendAll || a.missing.length ? a.cleaned.filter(c => !c.skipped || c.issues.length || Object.keys(c.raw).length)
+  const toSend = !a ? [] : (sendAll || a.missing.length ? a.cleaned.filter(c => !gone(c) && (!c.skipped || c.issues.length || Object.keys(c.raw).length))
     : a.cleaned.filter(c => !c.row && !c.skipped)).filter(c => !claude?.has(c.sourceRow));
   const src = source.trim() || (a ? (book ? book[tab].name : a.kind === 'tires' ? 'Tires tab' : 'Wheels tab') : '');
   const sql = a && good.length ? C.toSql(a.kind, src, lines, { includeRaw: keepRaw }) : '';
@@ -87,7 +89,7 @@ export default function ImportDashboard({ claudeReady, needsPassword }: { claude
         const res = await fetch('/api/import/claude', {
           method: 'POST',
           headers: { 'content-type': 'application/json', ...(pw ? { 'x-admin-password': pw } : {}) },
-          body: JSON.stringify({ kind: a.kind, headers: a.headers, rows: toSend.map(c => ({ sourceRow: c.sourceRow, cells: a.body[c.sourceRow - a.headerIdx - 2] ?? [] })) }),
+          body: JSON.stringify({ kind: a.kind, tab: book ? book[tab]?.name ?? '' : '', headers: a.headers, rows: toSend.map(c => ({ sourceRow: c.sourceRow, cells: a.body[c.sourceRow - a.headerIdx - 2] ?? [] })) }),
         });
         const body = await res.json().catch(() => ({}));
         if (res.status === 401) { sessionStorage.removeItem('gct-admin'); pw = ''; if (attempt === 0) continue; throw new Error('Wrong password.'); }
@@ -109,7 +111,7 @@ export default function ImportDashboard({ claudeReady, needsPassword }: { claude
     const el = Object.assign(document.createElement('a'), { href: url, download: `${src.replace(/[^\w-]+/g, '-').toLowerCase() || 'inventory'}.sql` });
     el.click(); URL.revokeObjectURL(url);
   };
-  const shown = filter === 'problems' ? lines.filter(l => !l.row || l.issues.length || l.origin === 'claude') : lines;
+  const shown = filter === 'problems' ? lines.filter(l => !gone(l) && (!l.row || l.issues.length || l.origin === 'claude')) : lines;
 
   return (
     <main className="imp">
@@ -152,7 +154,7 @@ export default function ImportDashboard({ claudeReady, needsPassword }: { claude
               <div className="imp-stats">
                 <div><b>{good.length}</b><span>ready{fromClaude ? ` (${fromClaude} fixed by Claude)` : ''}</span></div>
                 <div className={bad.length ? 'bad' : ''}><b>{bad.length}</b><span>can&apos;t be read</span></div>
-                <div><b>{skipped.length}</b><span>skipped (titles, blanks)</span></div>
+                <div><b>{skipped.length + left.length}</b><span>skipped ({left.length ? `${left.length} sold / returned, ` : ''}titles, blanks)</span></div>
               </div>
               {claudeReady ? (
                 <>

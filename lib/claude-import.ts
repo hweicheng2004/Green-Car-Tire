@@ -60,6 +60,13 @@ Return exactly one output row per input row, with the same source_row.
 - Never invent values. If a value isn't in the row, use null. A qty you can't read means skip.
 - Prices are per tire or per wheel. Convert a set price ("$300/set", "set of 4 $1100") to the per-unit price.
 - note: one short sentence on what you changed or assumed, e.g. "Price $300/set read as $75 per tire".
+- A status column saying Sold, Returned, Scrapped, Waiting to return or similar means it isn't stock: skip it.
+  Reserved, Available or Status Unknown are stock; put a status other than Available in notes.
+- A "Status" column is not new/used. A "Type" column of Set / Pair / Single / Package is not the season.
+- A price column on a purchasing sheet (with supplier, PO or invoice columns) is what the shop paid: price null,
+  and "Cost $X" in notes. Only a selling price goes in price.
+- The tab name says a lot: a "Used Tires" or "Singles" tab is used stock unless a row says new.
+- location: join the location-like columns (container, rack, area, shelf), e.g. "NYK3 · Left Front".
 
 Tires:
 - size: metric "WWW/AAR DD" written as 225/65R17. "225 65 17", "2256517", "P225/65ZR17" are all 225/65R17.
@@ -74,12 +81,15 @@ Wheels:
 - diameter and width from "17x7", "7Jx18" (width 7, diameter 18), "16 x 6.5". wheel_offset from "ET45", "+45".
 - bolt_pattern as "5x114.3". Inch patterns: 5x4.5 = 5x114.3, 6x5.5 = 6x139.7, 5x5 = 5x127, 5x4.75 = 5x120.7.
   Dual-drilled "5x100/5x114.3": first in bolt_pattern, second in bolt_pattern_alt.
-- center_bore in mm. wheel_type steel or alloy (OEM alloy, aftermarket = alloy). grade A/B/C only for used wheels.`;
+- center_bore in mm. wheel_type steel or alloy (OEM alloy, aftermarket = alloy). grade A/B/C only for used wheels.
+- One cell often holds the whole wheel as diameter / bolt pattern / bore: "18/5x112/66.6" is diameter 18,
+  5x112, bore 66.6; "18/5x108/114.3/72.6" is dual-drilled 5x108 and 5x114.3. A "?" means unknown: null.
+- NOS (new old stock) is new.`;
 
 const tsv = (cells: string[]) => cells.map(c => String(c ?? '').replace(/[\t\n\r]+/g, ' ').trim()).join('\t');
 
-export function chunkPrompt(kind: Kind, headers: string[], rows: { sourceRow: number; cells: string[] }[]) {
-  return `These are ${kind} rows. Columns (tab-separated):\nrow\t${tsv(headers)}\n\n` +
+export function chunkPrompt(kind: Kind, headers: string[], rows: { sourceRow: number; cells: string[] }[], tab = '') {
+  return `These are ${kind} rows${tab ? ` from the tab "${tab.replace(/["\n]/g, ' ').slice(0, 60)}"` : ''}. Columns (tab-separated):\nrow\t${tsv(headers)}\n\n` +
     rows.map(r => `${r.sourceRow}\t${tsv(r.cells)}`).join('\n');
 }
 
@@ -150,7 +160,7 @@ export function toCleaned(kind: Kind, input: { sourceRow: number; cells: string[
 // ---------------------------------------------------------------- the API call
 export type ImportUsage = { input: number; output: number; cacheRead: number; requests: number };
 
-async function runChunk(client: Anthropic, kind: Kind, headers: string[], rows: { sourceRow: number; cells: string[] }[], usage: ImportUsage) {
+async function runChunk(client: Anthropic, kind: Kind, headers: string[], rows: { sourceRow: number; cells: string[] }[], usage: ImportUsage, tab = '') {
   const stream = client.beta.messages.stream({
     model: MODEL,
     max_tokens: 64000,
@@ -158,7 +168,7 @@ async function runChunk(client: Anthropic, kind: Kind, headers: string[], rows: 
     fallbacks: 'default',                       // a declined request is re-run on Anthropic's recommended fallback model
     output_config: { effort: 'medium', format: { type: 'json_schema', schema: outputSchema(kind) } },
     system: [{ type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } }],
-    messages: [{ role: 'user', content: chunkPrompt(kind, headers, rows) }],
+    messages: [{ role: 'user', content: chunkPrompt(kind, headers, rows, tab) }],
   });
   const msg = await stream.finalMessage();
   usage.requests++;
@@ -173,7 +183,7 @@ async function runChunk(client: Anthropic, kind: Kind, headers: string[], rows: 
 }
 
 /** Splits the rows into chunks, runs them a few at a time, and returns every row in sheet order. */
-export async function cleanWithClaude(kind: Kind, headers: string[], rows: { sourceRow: number; cells: string[] }[], client = new Anthropic()) {
+export async function cleanWithClaude(kind: Kind, headers: string[], rows: { sourceRow: number; cells: string[] }[], client = new Anthropic(), tab = '') {
   if (rows.length > MAX_ROWS) throw new Error(`Send at most ${MAX_ROWS} rows at a time (got ${rows.length}).`);
   const chunks: typeof rows[] = [];
   for (let i = 0; i < rows.length; i += CHUNK_ROWS) chunks.push(rows.slice(i, i + CHUNK_ROWS));
@@ -184,7 +194,7 @@ export async function cleanWithClaude(kind: Kind, headers: string[], rows: { sou
     while (next < chunks.length) {
       const i = next++;
       try {
-        results[i] = await runChunk(client, kind, headers, chunks[i], usage);
+        results[i] = await runChunk(client, kind, headers, chunks[i], usage, tab);
       } catch (e) {
         // One failed chunk shouldn't lose the rest: its rows come back rejected with the reason.
         const msg = e instanceof Anthropic.APIError ? `Claude API error ${e.status}: ${e.message}` : (e as Error).message;
