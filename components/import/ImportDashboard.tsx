@@ -128,7 +128,7 @@ export default function ImportDashboard({ claudeReady, needsPassword }: { claude
   return (
     <main className="imp">
       <header className="imp-bar">
-        <div className="brand"><span className="mark">GCT</span>Inventory import<span className="sub">sheet → SQL</span></div>
+        <div className="brand"><a href="/"><img className="logo" src="/logo.png" alt="GreenCarTires.ca" width={480} height={71} /></a>Inventory import<span className="sub">sheet → SQL</span></div>
         <nav><a href="/">Counter</a> · <a href="/sync">Sync</a></nav>
       </header>
 

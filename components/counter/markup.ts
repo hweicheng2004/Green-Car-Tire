@@ -1,6 +1,6 @@
 // Static markup of the counter screen, from the clickable prototype. counter.js fills the panes.
 export const COUNTER_MARKUP = `  <header class="bar">
-    <div class="brand"><span class="mark">GCT</span>Green Car Tires<span class="sub">Counter</span></div>
+    <div class="brand"><img class="logo" src="/logo.png" alt="GreenCarTires.ca" width="480" height="71"><span class="sub">Counter</span></div>
     <div class="status" id="status"><span class="dot"></span>Loading inventory…</div>
   </header>
 
