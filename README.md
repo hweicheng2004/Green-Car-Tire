@@ -26,7 +26,7 @@ Once demo mode is off (Supabase connected, `DEMO_MODE` removed or `0`), the coun
 1. **Database connected**: `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in Vercel.
 2. **Tables**: Copy setup SQL (the same as `supabase/setup-all.sql`), paste it in Supabase > SQL Editor, Run, then Check again.
 3. **Tires** and 4. **Wheels**: choose a CSV or Excel file. The server cleans it with the same cleaner as the Sheets sync, shows what will load and which rows won't, then loads it in one go (replacing that table). No SQL to copy.
-5. **Optional**: Google Sheets sync, Wheel-Size key, Claude key, admin password.
+5. **Optional**: Google Sheets sync, Wheel-Size key, Claude key, admin password. With the Wheel-Size key set, **Load the make/model list** fills the vehicle boxes' suggestions (about 120 lookups, once; same as `npm run seed-models`). Vehicles missing from the list can still be looked up: press Enter in the model box and confirm.
 
 To try it with made-up stock, download `/samples/demo-tires.csv` and `/samples/demo-wheels.csv` from the site (links on `/setup`). They include a few bad rows on purpose. Set `ADMIN_PASSWORD` before the site is public: loading stock asks for it.
 

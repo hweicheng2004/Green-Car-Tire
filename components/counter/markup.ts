@@ -1,6 +1,6 @@
 // Static markup of the counter screen, from the clickable prototype. counter.js fills the panes.
 export const COUNTER_MARKUP = `  <header class="bar">
-    <div class="brand"><img class="logo" src="/logo.png" alt="GreenCarTires.ca" width="480" height="71"><span class="sub">Inventory</span></div>
+    <div class="brand"><a href="/" class="home" title="Reload and clear"><img class="logo" src="/logo.png" alt="GreenCarTires.ca, reload and clear" width="480" height="71"></a><span class="sub">Inventory</span></div>
     <div class="status" id="status"><span class="dot"></span>Loading inventory…</div>
   </header>
 
@@ -21,7 +21,8 @@ export const COUNTER_MARKUP = `  <header class="bar">
         <div class="tries" id="triesV"></div>
       </div>
       <div class="field">
-        <label for="qs" class="flabel">Tire size</label>
+        <div class="flabel-row"><label for="qs" class="flabel">Tire size</label>
+          <button type="button" id="clearAll" class="clear-all" title="Empty all boxes for the next customer">Clear · next customer <kbd>N</kbd></button></div>
         <div class="omni">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>
           <input id="qs" autocomplete="off" spellcheck="false" inputmode="numeric" placeholder="225 65 17">
@@ -82,6 +83,6 @@ export const COUNTER_MARKUP = `  <header class="bar">
 
   <footer class="keys">
     <span><kbd>V</kbd> vehicle box</span><span><kbd>S</kbd> size box</span><span><kbd>↵</kbd> to results</span><span><kbd>↑</kbd><kbd>↓</kbd> pick tire</span>
-    <span><kbd>1</kbd>–<kbd>4</kbd> quantity</span><span><kbd>T</kbd>/<kbd>W</kbd> tires or wheels</span><span><kbd>[</kbd><kbd>]</kbd> OE size</span><span><kbd>C</kbd> copy quote</span><span><kbd>O</kbd> order on TireConnect</span><span><kbd>Esc</kbd> back to search</span>
+    <span><kbd>1</kbd>–<kbd>4</kbd> quantity</span><span><kbd>T</kbd>/<kbd>W</kbd> tires or wheels</span><span><kbd>[</kbd><kbd>]</kbd> OE size</span><span><kbd>C</kbd> copy quote</span><span><kbd>N</kbd> next customer</span><span><kbd>O</kbd> order on TireConnect</span><span><kbd>Esc</kbd> back to search</span>
   </footer>
 `;

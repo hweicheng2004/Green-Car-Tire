@@ -115,6 +115,17 @@ function LoadStep({ kind, n, count, enabled, onLoaded }: { kind: Kind; n: number
 export default function SetupWizard({ initial }: { initial: Status }) {
   const [s, setS] = useState(initial);
   const [msg, setMsg] = useState('');
+  const [seeding, setSeeding] = useState('');
+  const seed = async () => {
+    if (s.models && !window.confirm('Reload the make/model list from Wheel-Size? It uses about 120 lookups.')) return;
+    setSeeding('Loading makes and models from Wheel-Size… (about a minute)');
+    try {
+      const r = await call<{ makes: number; models: number; hits: number }>('/api/setup/seed-models', {});
+      setMsg(`Loaded ${r.models} models from ${r.makes} makes, using ${r.hits} Wheel-Size lookups.`);
+      setS(await call<Status>('/api/setup/status'));
+    } catch (e) { setMsg((e as Error).message); }
+    setSeeding('');
+  };
   const refresh = async () => { try { setS(await call<Status>('/api/setup/status')); setMsg(''); } catch (e) { setMsg((e as Error).message); } };
   const copySql = async () => {
     try {
@@ -166,7 +177,13 @@ export default function SetupWizard({ initial }: { initial: Status }) {
         <Step n={5} done={s.googleSheet && s.wheelSize} title="Optional extras">
           <ul className="su-extras">
             <li>{chip(s.googleSheet, 'Set', 'Not set')} <b>Google Sheets sync</b>: keep stock in your sheet and sync it every 5 minutes. See <a href="/sync">/sync</a>.</li>
-            <li>{chip(s.wheelSize, 'Set', 'Not set')} <b>Wheel-Size</b> (<code>WHEELSIZE_API_KEY</code>): vehicle fitment. {s.models ? `${s.models} models in the list.` : 'Then run npm run seed-models once for the make/model lists.'}</li>
+            <li>{chip(s.wheelSize, 'Set', 'Not set')} <b>Wheel-Size</b> (<code>WHEELSIZE_API_KEY</code>): vehicle fitment.{' '}
+              {s.models ? `${s.models} makes and models in the list. ` : 'The make/model list is empty, so the vehicle boxes can\'t suggest names yet. '}
+              {s.wheelSize && tablesOk && !s.demo && (
+                <button className="su-inline" onClick={seed} disabled={!!seeding}>
+                  {seeding || (s.models ? 'Reload the make/model list' : 'Load the make/model list (about 120 lookups, once)')}
+                </button>
+              )}</li>
             <li>{chip(s.anthropic, 'Set', 'Not set')} <b>Claude</b> (<code>ANTHROPIC_API_KEY</code>): fix messy rows on <a href="/import">/import</a>.</li>
             <li>{chip(s.password, 'Set', 'Not set')} <b>Admin password</b> (<code>ADMIN_PASSWORD</code>): needed for loading stock and using Claude once the site is public.</li>
           </ul>

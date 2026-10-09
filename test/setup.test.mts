@@ -51,4 +51,23 @@ assert.equal((await setupStatus(db, {})).tires, 20);
 const bad = await loadSheet(db, 'tires', 'x', [['Name', 'Qty'], ['Thing', '4']], false);
 assert.equal(bad.loaded, false); assert.ok(bad.block, 'refused with a reason');
 assert.equal((await setupStatus(db, {})).tires, 20, 'a refused load leaves stock alone');
+
+// ---- make/model list from Wheel-Size (the /setup button): every market, every make, counted against the quota
+const { seedModels } = await import('../lib/seed-models');
+process.env.WHEELSIZE_API_KEY = 'test'; process.env.WHEELSIZE_REGIONS = 'cdm,usdm';
+const prevFetch = globalThis.fetch; const seen: string[] = [];
+globalThis.fetch = (async (u: URL) => {
+  const url = new URL(String(u)); seen.push(url.pathname + '?' + url.searchParams.get('region'));
+  const data = url.pathname === '/v2/makes/' ? [{ slug: 'mazda', name: 'Mazda' }, { slug: 'honda', name: 'Honda' }]
+    : url.searchParams.get('make') === 'mazda' ? [{ slug: 'cx-5', name: 'CX-5' }, { slug: 'mx-5', name: 'MX-5' }] : [{ slug: 'civic', name: 'Civic' }];
+  return new Response(JSON.stringify({ data }));
+}) as any;
+let hitCount = 0; const upserts: any[] = [];
+const seedDb: any = { rpc: async () => { hitCount++; return { data: hitCount, error: null }; },
+  from: () => ({ upsert: async (rows: any[]) => { upserts.push(...rows); return { error: null }; } }) };
+const sr = await seedModels(seedDb);
+globalThis.fetch = prevFetch;
+assert.deepEqual([sr.makes, sr.models, sr.hits, hitCount], [4, 6, 6, 6], '2 markets x (1 makes call + 2 makes)');
+assert.ok(upserts.some(r => r.make_slug === 'mazda' && r.model_slug === 'cx-5' && r.region === 'usdm'));
+assert.equal(seen.filter(x => x.startsWith('/v2/makes/')).length, 2);
 console.log('SETUP TEST PASSED');

@@ -44,25 +44,36 @@ export async function liveInventory(db: SupabaseClient): Promise<CounterInventor
 }
 
 /** Year + make + model from the three counter boxes. Saved fitments only, unless `lookup` confirms a Wheel-Size
- *  lookup; a confirmed lookup must name an exact model in the vehicle list, so a crafted URL can't spend lookups. */
+ *  lookup. A vehicle missing from the make/model list (list not loaded yet, a brand-new model, or a typo) can still be
+ *  looked up by its typed name once someone confirms; every lookup counts against the daily limit. */
 export async function liveVehicle(db: SupabaseClient, ask: VehicleAsk, lookup = false): Promise<VehicleResult> {
   const matches = await findModelsBy(db, ask.make, ask.model);
-  const m = lookup ? matches.find(x => compact(x.model_slug) === compact(ask.model)) : matches[0];
+  const listed = lookup ? matches.find(x => compact(x.model_slug) === compact(ask.model)) : matches[0];
+  const typed = slug(ask.make) && slug(ask.model)
+    ? { make_slug: slug(ask.make), model_slug: slug(ask.model), make_name: nice(ask.make), model_name: nice(ask.model) } : null;
+  const m = listed ?? typed;
   if (!m) return { none: true };
   const label = `${m.make_name} ${m.model_name}`;
   if (ask.year === null) return { miss: { year: null, label, why: 'Add the year to look up fitment.' } };
-  const r = await getFitment(db, m.make_slug, m.model_slug, ask.year, false, lookup);
+  const keyMissing = !process.env.WHEELSIZE_API_KEY;
+  const r = await getFitment(db, m.make_slug, m.model_slug, ask.year, false, lookup && !keyMissing);
   if ('notCached' in r) {
+    const options = listed ? matches.slice(0, 6).map(x => ({ makeSlug: x.make_slug, modelSlug: x.model_slug, label: `${x.make_name} ${x.model_name}` }))
+      : [{ makeSlug: m.make_slug, modelSlug: m.model_slug, label }];
     return { needsLookup: {
-      year: ask.year, makeSlug: m.make_slug, modelSlug: m.model_slug, label,
-      options: matches.slice(0, 6).map(x => ({ makeSlug: x.make_slug, modelSlug: x.model_slug, label: `${x.make_name} ${x.model_name}` })),
+      year: ask.year, makeSlug: m.make_slug, modelSlug: m.model_slug, label, options,
       hitsNeeded: regions().length, hitsToday: await hitsToday(db), dailyLimit: DAILY_LIMIT(),
+      ...(listed ? {} : { unlisted: true }), ...(keyMissing ? { keyMissing: true } : {}),
     } };
   }
   if ('error' in r) return { miss: { year: ask.year, label, why: r.error } };
   const src = r.cache === 'hit' ? 'cache' : r.cache === 'miss' ? 'api' : 'stale';
   return { vehicle: fitmentToCounter(r.fit, m.make_slug, m.model_slug, src) };
 }
+
+// Typed names -> Wheel-Size style slugs: "Land Rover" -> land-rover, "CR-V" -> cr-v.
+const slug = (t: string) => t.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 50);
+const nice = (t: string) => t.trim().replace(/\s+/g, ' ').slice(0, 50);
 
 const title = (slug: string) => slug.split('-').map(w => (w.length <= 3 && /\d/.test(w) ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1))).join(' ');
 

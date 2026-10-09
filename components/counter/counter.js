@@ -58,9 +58,16 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
 
   // ---------- Fitment math ----------
   function compute() { computeTires(); computeWheels(); }
+  // Nothing searched (first load, after Clear, or while still typing): browse the whole inventory, grouped by size.
+  const browsing = () => st.mode === 'none';
+  const bySize = (a, b) => a.s.r - b.s.r || a.s.w - b.s.w || a.s.a - b.s.a;
   function computeTires() {
     const tgt = st.target, oe = st.oe; st.rows = []; st.excluded = [];
-    if (!tgt) return;
+    if (!tgt) {
+      if (browsing()) st.rows = INV.map(t => ({ ...t, group: 'size:' + t.size, delta: 0, srWarn: false }))
+        .sort((a, b) => bySize(a, b) || Number(a.used) - Number(b.used) || (a.price ?? 1e9) - (b.price ?? 1e9));
+      return;
+    }
     const d0 = dia(tgt), ex = new Map();
     for (const t of byRim.get(tgt.r) || []) {
       let group = null, delta = 0;
@@ -95,6 +102,11 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   // A blank width, offset or bore in the sheet never rules a wheel out; it lands in "fits with notes" to check by hand.
   function computeWheels() {
     st.wrows = []; st.wex = [];
+    if (browsing()) {
+      st.wrows = WHL.map(w => ({ ...w, group: 'dia:' + w.d, ring: false, minus: false, plus: false, etWarn: false, lug: false, unknown: [], dW: 0, dEt: 0, cur: false, tire: null, ref: null }))
+        .sort((a, b) => a.d - b.d || a.pcd.localeCompare(b.pcd) || Number(a.used) - Number(b.used) || (a.price ?? 1e9) - (b.price ?? 1e9));
+      return;
+    }
     if (st.mode !== 'vehicle') return;
     const v = st.veh.v;
     if (!v.bolt) return;
@@ -127,6 +139,7 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     return st.wrows.filter(w => (!st.stock || w.qty > 0) && (st.wtype === 'all' || w.type === st.wtype) && (st.wcond === 'all' || (st.wcond === 'new' ? !w.used : w.used)));
   }
   function autoSelect() {
+    if (browsing()) { st.sel = null; st.wsel = null; return; }   // browsing: nothing is quoted until someone picks a line
     const v = visible();
     const pick = v.find(r => r.group === 'exact' && r.qty > 0) || v.find(r => r.qty > 0) || v[0];
     st.sel = pick ? pick.id : null;
@@ -196,16 +209,16 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     if (!yText && !mText && !mdText) return showNone('—');
     if (parseSize(st.query)) return showNone('That’s a size →');
     const mk = catalog.length ? findMake(mText) : null;
-    if (catalog.length && mText && !mk) return showNone(catalog.some(m => compact(m.name).startsWith(compact(mText))) ? 'Pick a make' : 'Unknown make');
+    // Not in the make/model list: keep typing, or press Enter to look it up by the typed name.
+    if (catalog.length && mText && !mk && !force) return showNone(catalog.some(m => compact(m.name).startsWith(compact(mText))) ? 'Pick a make' : 'Not in list · ↵');
     if (!mdText) return showNone(mText ? 'Add the model' : 'Add the make');
     let model = mdText;
     if (mk) {
       const ms = modelMatches(mk, mdText);
       const exact = ms.find(m => compact(m.name) === compact(mdText) || compact(m.slug) === compact(mdText));
-      if (!ms.length) return showNone('Unknown model');
-      if (!exact && !force) return showNone(ms.length === 1 ? `↵ ${ms[0].name}` : 'Pick a model');
-      model = (exact || ms[0]).slug;
-      if (!exact) $('qmd').value = ms[0].name;
+      if (!ms.length && !force) return showNone('Not in list · ↵');
+      if (ms.length && !exact && !force) return showNone(ms.length === 1 ? `↵ ${ms[0].name}` : 'Pick a model');
+      if (ms.length) { model = (exact || ms[0]).slug; if (!exact) $('qmd').value = ms[0].name; }
     }
     if (!yText) return showNone('Add the year');
     if (year === null) return showNone('Year?');
@@ -228,7 +241,7 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
       const n = r.needsLookup;
       setSubject(`v|${n.year}|${n.makeSlug}|${n.modelSlug}`);
       Object.assign(st, { mode: 'lookup', veh: n, target: null, oe: null });
-      p.className = 'parse none'; p.textContent = quotaOut(n) ? 'No lookups left' : 'Not saved yet';
+      p.className = 'parse none'; p.textContent = n.keyMissing ? 'Not saved yet' : quotaOut(n) ? 'No lookups left' : 'Not saved yet';
       compute(); autoSelect(); render(); showPopup(n, fromEnter);
       return;   // logged once looked up, or not at all if cancelled
     }
@@ -254,6 +267,7 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   // double Enter never spends. With too few lookups left, the popup offers the size search instead.
   let armedAt = 0;
   const quotaOut = n => n.hitsToday != null && n.dailyLimit - n.hitsToday < n.hitsNeeded;
+  const blocked = n => !!n.keyMissing || quotaOut(n);   // no lookup possible: offer the size search instead
   const popupHasFocus = () => { const el = $('lookupPop'); return !!el && el.contains(document.activeElement); };
   function focusPopup() {
     const b = $('lookupGo') || $('lookupSize'); if (!b) return;
@@ -266,17 +280,20 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   }
   function renderPopup(busy = '') {
     const el = $('lookupPop'), n = pending; if (!n) return;
-    const hadFocus = popupHasFocus(), out = quotaOut(n);
+    const hadFocus = popupHasFocus(), out = blocked(n);
     const o = n.options[pendingPick] || { label: n.label };
     const leftN = n.hitsToday == null ? null : Math.max(0, n.dailyLimit - n.hitsToday);
     const left = leftN == null ? '' : ` ${leftN} of ${n.dailyLimit} left today.`;
     el.setAttribute('aria-labelledby', 'lookupTitle');
+    const unlisted = n.unlisted ? `<p class="note">${catalog.length ? 'Not in your make/model list. Check the spelling: a lookup with a wrong name still uses the lookups.'
+      : 'The make/model list isn\'t loaded yet (see Setup), so check the spelling first: a wrong name still uses the lookups.'}</p>` : '';
     el.innerHTML = out
       ? `<h3 id="lookupTitle">${n.year} ${esc(o.label)} isn't saved yet</h3>
-      <p class="out">No Wheel-Size lookups left today (${leftN} of ${n.dailyLimit}). Search the size off the driver's door placard instead. Saved vehicles still work.</p>
+      <p class="out">${n.keyMissing ? 'Wheel-Size isn\'t connected yet (WHEELSIZE_API_KEY isn\'t set in Vercel), so new vehicles can\'t be looked up.'
+        : `No Wheel-Size lookups left today (${leftN} of ${n.dailyLimit}).`} Search the size off the driver's door placard instead. Saved vehicles still work.</p>
       <div class="acts"><button class="go" id="lookupSize">Search a size <kbd>S</kbd></button><button id="lookupNo">Not now <kbd>Esc</kbd></button></div>`
       : `<h3 id="lookupTitle">${n.year} ${esc(o.label)} isn't saved yet</h3>
-      <p>Look it up on Wheel-Size? Uses ${n.hitsNeeded} lookup${n.hitsNeeded === 1 ? '' : 's'}.${left} Once saved, it's free for everyone.</p>
+      <p>Look it up on Wheel-Size? Uses ${n.hitsNeeded} lookup${n.hitsNeeded === 1 ? '' : 's'}.${left} Once saved, it's free for everyone.</p>${unlisted}
       ${n.options.length > 1 ? `<div class="opts" role="group" aria-label="Which model (arrow keys)">${n.options.map((x, i) => `<button data-pick="${i}" aria-pressed="${i === pendingPick}">${esc(x.label)}</button>`).join('')}</div>` : ''}
       ${busy ? `<p role="status">${esc(busy)}</p>` : `<div class="acts"><button class="go" id="lookupGo">Look it up <kbd>↵</kbd></button><button id="lookupNo">Not now <kbd>Esc</kbd></button></div>`}`;
     el.hidden = false;
@@ -291,11 +308,11 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   function sizeInstead() {
     const n = pending; if (!n) return;
     hidePopup();
-    Object.assign(st, { mode: 'miss', veh: { year: n.year, label: n.label, why: quotaOut(n) ? 'No Wheel-Size lookups left today.' : 'Not looked up.' } });
+    Object.assign(st, { mode: 'miss', veh: { year: n.year, label: n.label, why: n.keyMissing ? 'Wheel-Size isn\'t connected.' : quotaOut(n) ? 'No Wheel-Size lookups left today.' : 'Not looked up.' } });
     render(); focusBox('qs');
   }
   function confirmLookup() {
-    const n = pending; if (!n || quotaOut(n)) return;
+    const n = pending; if (!n || blocked(n)) return;
     const o = n.options[pendingPick] || { makeSlug: n.makeSlug, modelSlug: n.modelSlug };
     const seq = ++vseq;
     renderPopup('Looking it up on Wheel-Size…');
@@ -318,6 +335,15 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     Object.assign(st, { mode: 'miss', veh: { year: n.year, label: n.label, why: 'Not looked up. Press Enter in the model box to look it up with Wheel-Size.' } });
     render();
     if (wasFocused) $('qmd').focus();
+  }
+  /** Clear button / N: empty all four boxes and reset the screen for the next customer. */
+  function newCustomer() {
+    flush(); ++vseq; clearTimeout(vtimer); typed = null;
+    clearBox('qv'); clearBox('qs');
+    Object.assign(st, { mode: 'none', veh: null, target: null, oe: null, query: '', subject: null, qty: 4, season: 'all', cond: 'all',
+      stock: true, tab: 'tires', sel: null, wsel: null, wtype: 'all', wcond: 'all', sensors: false });
+    fillModelList(); compute(); autoSelect(); render();
+    lastBox = 'qv'; setActive('qv'); $('qv').focus();
   }
   /** Fills the three boxes from a "Try:" or "OE on" button: { year, make (slug), model (slug) }. */
   function setVehicle(y, makeSlug, modelSlug) {
@@ -385,7 +411,7 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
         <div class="note">No vehicle selected, so load index isn't checked. Match it to the customer's door placard. Wheels need a vehicle search.</div>`;
     } else if (st.mode === 'lookup') {
       el.innerHTML = `<div><h2>${st.veh.year} ${esc(st.veh.label)}</h2></div>
-        <div class="gen">${quotaOut(st.veh) ? 'Not saved yet, and no Wheel-Size lookups are left today. Search the size off the door placard (S).'
+        <div class="gen">${st.veh.keyMissing ? 'Not saved yet, and Wheel-Size isn\'t connected (WHEELSIZE_API_KEY). Search the size off the door placard (S).' : quotaOut(st.veh) ? 'Not saved yet, and no Wheel-Size lookups are left today. Search the size off the door placard (S).'
           : 'Not saved yet. Confirm the Wheel-Size lookup above, or search the size off the door placard.'}</div>`;
     } else if (st.mode === 'miss') {
       el.innerHTML = `<div><h2>${st.veh.year ?? ''} ${esc(st.veh.label)}</h2></div><div class="gen">${esc(st.veh.why || 'No fitment on file for this year.')} ${/placard/i.test(st.veh.why || '') ? 'Search the size directly (S).' : 'Check the door placard and search the size directly (S).'}</div>`;
@@ -395,7 +421,7 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   }
 
   function renderTabs() {
-    const tn = st.target ? visible().length : 0, wn = st.mode === 'vehicle' ? visibleW().length : null;
+    const tn = st.target || browsing() ? visible().length : 0, wn = st.mode === 'vehicle' || browsing() ? visibleW().length : null;
     $('tabs').innerHTML = `<button role="tab" data-tab="tires" aria-selected="${st.tab === 'tires'}">Tires <span class="n">${tn}</span><kbd>T</kbd></button>
       <button role="tab" data-tab="wheels" aria-selected="${st.tab === 'wheels'}">Wheels <span class="n">${wn === null ? '—' : wn}</span><kbd>W</kbd></button>`;
     $('ttable').hidden = st.tab !== 'tires'; $('wtable').hidden = st.tab !== 'wheels';
@@ -438,11 +464,16 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
 
   function renderTires() {
     const rows = $('rows'), ban = $('banner'), fil = $('filters'), ex = $('excl');
-    if (!st.target) { ban.innerHTML = ''; fil.innerHTML = ''; ex.innerHTML = ''; rows.innerHTML = `<tr><td colspan="9" class="empty">Search a vehicle or size to see what's on the shelf.</td></tr>`; return; }
-    const key = st.target.key;
+    const browse = !st.target && browsing();
+    if (!st.target && !browse) { ban.innerHTML = ''; fil.innerHTML = ''; ex.innerHTML = ''; rows.innerHTML = `<tr><td colspan="9" class="empty">Search a vehicle or size to see what's on the shelf.</td></tr>`; return; }
+    const key = st.target ? st.target.key : '';
     const exactIn = st.rows.filter(r => r.group === 'exact' && r.qty > 0), altIn = st.rows.filter(r => r.group === 'alt' && r.qty > 0);
     const sumQ = a => a.reduce((n, r) => n + r.qty, 0);
-    if (exactIn.length) ban.innerHTML = `<div class="banner ok"><b>${key}</b> ${sumQ(exactIn)} on hand across ${exactIn.length} line${exactIn.length > 1 ? 's' : ''}${altIn.length ? ` · ${altIn.length} safe alternate line${altIn.length > 1 ? 's' : ''} too` : ''}</div>`;
+    if (browse) {
+      const inS = st.rows.filter(r => r.qty > 0);
+      ban.innerHTML = `<div class="banner info"><b>All tires</b> ${sumQ(inS)} on hand in ${new Set(inS.map(r => r.size)).size} sizes. Type a vehicle or size to narrow it down.</div>`;
+    }
+    else if (exactIn.length) ban.innerHTML = `<div class="banner ok"><b>${key}</b> ${sumQ(exactIn)} on hand across ${exactIn.length} line${exactIn.length > 1 ? 's' : ''}${altIn.length ? ` · ${altIn.length} safe alternate line${altIn.length > 1 ? 's' : ''} too` : ''}</div>`;
     else if (altIn.length) ban.innerHTML = `<div class="banner pivot"><b>${key}</b> is out of stock. ${sumQ(altIn)} tires in ${altIn.length} safe alternate line${altIn.length > 1 ? 's' : ''} within ±${fees.tol}% diameter.</div>`;
     else ban.innerHTML = `<div class="banner info"><b>${key}</b> Nothing on hand in this size or a safe alternate. Quote a special order.</div>`;
 
@@ -460,7 +491,9 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
       for (const r of v) {
         if (r.group !== last) {
           last = r.group;
-          html += r.group === 'exact' ? `<tr class="grp"><td colspan="9">${st.mode === 'vehicle' ? 'OE size' : 'Exact size'}<span>${key}</span></td></tr>`
+          const sz = r.group.startsWith('size:') ? st.rows.filter(x => x.size === r.size && x.qty > 0) : null;
+          html += sz ? `<tr class="grp"><td colspan="9">${r.size}<span>${sumQ(sz)} on hand</span></td></tr>`
+            : r.group === 'exact' ? `<tr class="grp"><td colspan="9">${st.mode === 'vehicle' ? 'OE size' : 'Exact size'}<span>${key}</span></td></tr>`
             : `<tr class="grp"><td colspan="9">Safe alternates<span>±${fees.tol}% diameter · same ${st.target.r}″ wheel${st.oe && st.oe.li != null ? ` · load ≥ ${st.oe.li}` : ''}</span></td></tr>`;
         }
         const dc = Math.abs(r.delta) < 1 ? 'd0' : Math.abs(r.delta) < 2 ? 'd1' : 'd2';
@@ -485,14 +518,16 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
 
   function renderWheels() {
     const rows = $('wrows'), ban = $('banner'), fil = $('filters'), ex = $('excl');
-    if (st.mode !== 'vehicle') {
+    const browse = browsing();
+    if (st.mode !== 'vehicle' && !browse) {
       ban.innerHTML = `<div class="banner info">Wheels are matched by bolt pattern and center bore. Search a year, make and model.</div>`;
       fil.innerHTML = ''; ex.innerHTML = ''; rows.innerHTML = `<tr><td colspan="9" class="empty">Type a vehicle in the year · make · model box.</td></tr>`; return;
     }
-    const v = st.veh.v, inS = st.wrows.filter(w => w.qty > 0);
+    const v = browse ? {} : st.veh.v, inS = st.wrows.filter(w => w.qty > 0);
     const dn = inS.filter(w => w.group === 'direct').length, an = inS.length - dn, rn = inS.filter(w => w.group === 'direct' && w.ring).length;
     const spec = `${esc(v.bolt ?? 'bolt pattern unknown')}${v.cb != null ? ` · ${v.cb} mm bore` : ''}`;
-    ban.innerHTML = !v.bolt ? `<div class="banner info">No bolt pattern on file for this vehicle, so wheels can't be matched.</div>`
+    ban.innerHTML = browse ? `<div class="banner info"><b>All wheels</b> ${inS.reduce((n, w) => n + w.qty, 0)} on hand in ${inS.length} lines. Add the customer's vehicle to see what fits.</div>`
+      : !v.bolt ? `<div class="banner info">No bolt pattern on file for this vehicle, so wheels can't be matched.</div>`
       : inS.length ? `<div class="banner ${dn ? 'ok' : 'pivot'}"><b>${spec}</b> ${dn} line${dn === 1 ? '' : 's'} fit${dn === 1 ? 's' : ''}${rn ? ` (${rn} with hub rings, added to the quote)` : ''}${an ? `, ${an} more with a size or offset change` : ''}</div>`
       : `<div class="banner info"><b>${spec}</b> No wheels on hand for this vehicle.</div>`;
     const segT = [['all', 'All'], ['Alloy', 'Alloy'], ['Steel', 'Steel']].map(([k, l]) => `<button data-wtype="${k}" aria-pressed="${st.wtype === k}">${l}<span class="n">${st.wrows.filter(w => (!st.stock || w.qty > 0) && (k === 'all' || w.type === k)).length}</span></button>`).join('');
@@ -506,7 +541,8 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
       for (const w of list) {
         if (w.group !== last) {
           last = w.group;
-          html += w.group === 'direct' ? `<tr class="grp"><td colspan="9">Fits<span>bolt pattern matches, bore same or larger (rings added), OE diameter, offset within ${fees.et} mm</span></td></tr>`
+          html += w.group.startsWith('dia:') ? `<tr class="grp"><td colspan="9">${w.d}″ wheels<span>${st.wrows.filter(x => x.d === w.d && x.qty > 0).reduce((n, x) => n + x.qty, 0)} on hand</span></td></tr>`
+            : w.group === 'direct' ? `<tr class="grp"><td colspan="9">Fits<span>bolt pattern matches, bore same or larger (rings added), OE diameter, offset within ${fees.et} mm</span></td></tr>`
             : `<tr class="grp"><td colspan="9">Fits with notes<span>plus/minus size, offset or width change, or missing specs</span></td></tr>`;
         }
         const notes = [];
@@ -517,7 +553,8 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
         if (w.dW) notes.push(`<span class="chip ${Math.abs(w.dW) > 0.5 ? 'd2' : 'd1'}">${sgn(w.dW)}″ W</span>`);
         if (w.lug) notes.push(`<span class="chip warn">${w.seat} lugs</span>`);
         for (const u of w.unknown) notes.push(`<span class="chip warn">no ${u}</span>`);
-        if (!notes.length) notes.push('<span class="chip ok">OE spec</span>');
+        if (browse) notes.push(`<span class="chip">${esc(w.pcd)}</span>`);
+        else if (!notes.length) notes.push('<span class="chip ok">OE spec</span>');
         html += `<tr class="row wrow${w.id === st.wsel ? ' sel' : ''}${w.qty === 0 ? ' zero' : ''}" data-wid="${w.id}">
           <td class="mono">${wsize(w)} <span class="et">ET${q2(w.et)}</span></td>
           <td class="tname"><b>${esc(w.desc)}</b> <span>${esc(w.finish)}</span></td>
@@ -643,6 +680,12 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   function renderWheelQuote() {
     const el = $('quote'), w = selectedW();
     if (!w) { el.innerHTML = `${band('Wheel quote')}<div class="gen">${st.mode === 'vehicle' ? 'Pick a wheel to price it.' : 'Search a vehicle to match wheels.'}</div>`; return; }
+    if (st.mode !== 'vehicle') {   // browsing: fit, rings and lug nuts all depend on the car
+      el.innerHTML = `${band('Wheel quote')}<div class="qhead"><div class="tire">${esc(w.desc)}</div>
+        <div class="spec">${wsize(w)} ET${q2(w.et)} · ${esc(w.pcd)} · CB ${q2(w.cb)} · ${money(w.price)} each · ${w.qty} on hand</div></div>
+        <div class="gen">Add the customer's vehicle to check fit and price it with any rings or lug nuts it needs.</div>`;
+      return;
+    }
     const v = st.veh.v, c = calcW(w), cav = wheelCaveats(w, c), rest = cav.filter(k => !k.stop);
     const tireLine = w.tire ? `Takes <b class="mono">${w.tire.key}</b>${w.tire.delta ? ` (${w.tire.delta > 0 ? '+' : '−'}${Math.abs(w.tire.delta).toFixed(1)}% vs OE)` : ''}` : `No ${w.d}″ tire in stock within ±${fees.tol}% of OE diameter. Special order.`;
     const oeIdx = v.oe.findIndex(o => parseSize(o[0]).r === w.d);
@@ -682,7 +725,7 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   }
   function copyQuote() {
     let txt, n;
-    if (st.tab === 'wheels') { const w = selectedW(); if (!w) return; const c = calcW(w), cav = wheelCaveats(w, c); txt = quoteTextW(w, c, cav); n = noteCount(w, cav); }
+    if (st.tab === 'wheels') { const w = selectedW(); if (!w || st.mode !== 'vehicle') return; const c = calcW(w), cav = wheelCaveats(w, c); txt = quoteTextW(w, c, cav); n = noteCount(w, cav); }
     else { const r = selected(); if (!r) return; const c = calc(r), cav = tireCaveats(r, c); txt = quoteText(r, c, cav); n = noteCount(r, cav); }
     flush();
     const out = $('copied');
@@ -695,6 +738,7 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   on(document, 'click', e => {
     const ord = e.target.closest('a[data-order]');
     if (ord) { copyForOrder(ord.dataset.order, ord.dataset.filled === 'true'); return; }
+    if (e.target.closest('#clearAll')) { newCustomer(); return; }
     const b = e.target.closest('[data-y],[data-pick],#lookupGo,#lookupNo,#lookupSize,[data-s],[data-oe],[data-tab],[data-season],[data-cond],[data-wtype],[data-wcond],[data-qty],tr.wrow,tr.row,#copy,#copySize,#toTires'); if (!b) return;
     if (b.dataset.y) setVehicle(+b.dataset.y, b.dataset.mk, b.dataset.md);
     else if (b.dataset.pick) { pendingPick = +b.dataset.pick; renderPopup(); }
@@ -748,7 +792,7 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
       e.preventDefault();
       if (!popupHasFocus()) { focusPopup(); return; }     // first Enter: onto the popup, nothing spent
       if (e.repeat || Date.now() < armedAt) return;       // a held or doubled Enter never spends
-      if (quotaOut(pending) || e.target.id === 'lookupSize') sizeInstead();
+      if (blocked(pending) || e.target.id === 'lookupSize') sizeInstead();
       else if (e.target.id === 'lookupNo') cancelLookup();
       else if (e.target.dataset.pick) pickModel(+e.target.dataset.pick);
       else confirmLookup();
@@ -785,6 +829,7 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     else if (e.key === 'ArrowUp') { e.preventDefault(); moveSel(-1); }
     else if ((e.key === '[' || e.key === ']') && st.mode === 'vehicle') setOE(st.oeIdx + (e.key === ']' ? 1 : -1));
     else if (k === 'c' && !e.metaKey && !e.ctrlKey) copyQuote();
+    else if (k === 'n' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); newCustomer(); }
     else if (k === 'o' && !e.metaKey && !e.ctrlKey) { const a = $('orderTc'); if (a) { window.open(a.href, '_blank', 'noopener'); copyForOrder(a.dataset.order, a.dataset.filled === 'true'); } }
     else if (e.key === 'Escape') { focusBox(lastBox); }
   });
@@ -820,15 +865,14 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   $('triesV').innerHTML = 'Try: ' + data.tries.vehicles.map(v => `<button data-y="${v.year}" data-mk="${esc(v.make)}" data-md="${esc(v.model)}">${esc(v.label)}</button>`).join('');
   $('triesS').innerHTML = 'Try: ' + data.tries.sizes.map(s => `<button data-s="${esc(s)}">${esc(s)}</button>`).join('');
 
-  // Demo starts in a realistic working state. Live starts empty so a page load never spends a Wheel-Size hit.
+  // Starts empty, showing the whole inventory (and a page load never spends a Wheel-Size hit).
   // Make/model suggestions. Until they load, boxes still work: the server matches what was typed.
-  render(); $('qv').focus();
+  compute(); render(); $('qv').focus();
   api.catalog().then(c => {
     catalog = c;
     $('dlMake').innerHTML = c.map(m => `<option value="${esc(m.name)}"></option>`).join('');
     fillModelList();
     // Demo starts in a realistic working state. Live starts empty so a page load never touches Wheel-Size.
-    if (data.mode === 'demo' && !$('qv').value && !$('qmk').value) setVehicle(2018, 'subaru', 'outback');
   }).catch(() => {});
 
   return () => { ac.abort(); clearTimeout(vtimer); };

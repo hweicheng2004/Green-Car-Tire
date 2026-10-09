@@ -131,8 +131,16 @@ const l1 = await liveVehicle(fakeDb, { year: 2019, make: 'Mazda', model: 'cx' })
 assert.ok('needsLookup' in l1, 'unsaved: prompt');
 assert.equal(wsCalls, 0, 'no Wheel-Size call without confirmation');
 assert.deepEqual([l1.needsLookup.label, l1.needsLookup.options.map(o => o.label), l1.needsLookup.hitsToday], ['Mazda CX-5', ['Mazda CX-5', 'Mazda CX-50'], 40]);
-assert.ok('none' in await liveVehicle(fakeDb, { year: 2019, make: 'Mazda', model: 'cx' }, true), 'confirm needs an exact model');
-assert.equal(wsCalls, 0);
+// Not in the make/model list (list not loaded, new model, or a typo): still offered, flagged, looked up by the typed name.
+const un = await liveVehicle(fakeDb, { year: 2019, make: 'Mazda', model: 'Miata MX-5' });
+assert.ok('needsLookup' in un && un.needsLookup.unlisted === true);
+assert.deepEqual([un.needsLookup.makeSlug, un.needsLookup.modelSlug, un.needsLookup.label, un.needsLookup.options.length], ['mazda', 'miata-mx-5', 'Mazda Miata MX-5', 1]);
+assert.equal(wsCalls, 0, 'offering costs nothing');
+// No Wheel-Size key: the prompt says so, and even a confirmed lookup spends nothing.
+delete process.env.WHEELSIZE_API_KEY;
+const nokey = await liveVehicle(fakeDb, { year: 2019, make: 'mazda', model: 'cx-5' }, true);
+assert.ok('needsLookup' in nokey && nokey.needsLookup.keyMissing === true); assert.equal(wsCalls, 0);
+process.env.WHEELSIZE_API_KEY = 'test';
 const l2 = await liveVehicle(fakeDb, { year: 2019, make: 'mazda', model: 'cx-5' }, true);
 assert.ok('vehicle' in l2 && l2.vehicle.source === 'api'); assert.equal(wsCalls, 2, 'confirmed: one hit per market');
 const l3 = await liveVehicle(fakeDb, { year: 2019, make: 'Mazda', model: 'CX-5' });

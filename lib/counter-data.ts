@@ -40,6 +40,8 @@ export type LookupPrompt = {
   year: number; makeSlug: string; modelSlug: string; label: string;
   options: { makeSlug: string; modelSlug: string; label: string }[];   // other models matching what was typed
   hitsNeeded: number; hitsToday: number | null; dailyLimit: number;
+  unlisted?: boolean;     // not in the make/model list (empty list, new model or a typo): looked up by the typed name
+  keyMissing?: boolean;   // WHEELSIZE_API_KEY isn't set, so a lookup can't run
 };
 export type Fees = {
   mount: number; disp: number; tpms: number; tpmsOn: boolean; tax: number; tol: number;
