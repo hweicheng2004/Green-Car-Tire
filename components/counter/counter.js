@@ -136,7 +136,10 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     const ds = rims.map(r => r.d), minD = Math.min(...ds), maxD = Math.max(...ds), cur = { d: parseSize(v.oe[st.oeIdx][0]).r };
     for (const w of WHL) {
       if (!w.pcds.includes(v.bolt) || w.d < minD - 1 || w.d > maxD + 1) continue;
-      if (v.cb != null && w.cb != null && w.cb < v.cb - 0.05) { st.wex.push({ w, why: `bore ${w.cb} mm is smaller than the ${v.cb} mm hub` }); continue; }
+      // Sheets round bores ("56" for 56.1, "64" for 64.1): a whole number less than 1 mm under the hub is kept, flagged to
+      // measure. Anything else smaller than the hub can't go on.
+      const boreRounded = v.cb != null && w.cb != null && w.cb < v.cb - 0.05 && Number.isInteger(w.cb) && v.cb - w.cb < 1;
+      if (v.cb != null && w.cb != null && w.cb < v.cb - 0.05 && !boreRounded) { st.wex.push({ w, why: `bore ${w.cb} mm is smaller than the ${v.cb} mm hub` }); continue; }
       const same = rims.filter(r => r.d === w.d);
       const ref = same.length ? same.reduce((a, b) => Math.abs((b.et ?? 0) - (w.et ?? 0)) < Math.abs((a.et ?? 0) - (w.et ?? 0)) ? b : a)
         : rims.reduce((a, b) => Math.abs(b.d - w.d) < Math.abs(a.d - w.d) ? b : a);
@@ -149,8 +152,9 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
       const tire = same.length ? { key: ref.size, delta: 0 } : suggestTire(w.d, ref);
       // A bigger bore is a normal fit: hub-centric rings take up the gap and go on the quote automatically.
       // Only a smaller bore rules a wheel out (above). Size, offset and width changes still get their own group.
-      const direct = !minus && !plus && !etWarn && Math.abs(dW) <= 0.5 && !unknown.length;
-      st.wrows.push({ ...w, ref, dW, dEt, ring, minus, plus, etWarn, lug, unknown, tire, group: direct ? 'direct' : 'adapt', cur: w.d === cur.d });
+      // Missing width or offset in the sheet doesn't move a wheel out of "Fits": it's flagged to measure instead.
+      const direct = !minus && !plus && !etWarn && Math.abs(dW) <= 0.5;
+      st.wrows.push({ ...w, ref, dW, dEt, ring, minus, plus, etWarn, lug, unknown, tire, boreRounded, group: direct ? 'direct' : 'adapt', cur: w.d === cur.d });
     }
     st.wrows.sort((a, b) => (a.group === b.group ? 0 : a.group === 'direct' ? -1 : 1) || (b.cur - a.cur) || (b.qty > 0) - (a.qty > 0) || (a.ring - b.ring) || (a.price ?? 1e9) - (b.price ?? 1e9));
   }
@@ -637,8 +641,8 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
         if (w.group !== last) {
           last = w.group;
           html += w.group.startsWith('dia:') ? `<tr class="grp"><td colspan="9">${w.d}″ wheels<span>${st.wrows.filter(x => x.d === w.d && x.qty > 0).reduce((n, x) => n + x.qty, 0)} on hand</span></td></tr>`
-            : w.group === 'direct' ? `<tr class="grp"><td colspan="9">Fits<span>bolt pattern matches, bore same or larger (rings added), OE diameter, offset within ${fees.et} mm</span></td></tr>`
-            : `<tr class="grp"><td colspan="9">Fits with notes<span>plus/minus size, offset or width change, or missing specs</span></td></tr>`;
+            : w.group === 'direct' ? `<tr class="grp"><td colspan="9">Fits<span>bolt pattern matches, bore same or larger (rings added), OE diameter, offset within ${fees.et} mm · missing specs flagged to measure</span></td></tr>`
+            : `<tr class="grp"><td colspan="9">Fits with changes<span>plus/minus size, or an offset or width change</span></td></tr>`;
         }
         const notes = [];
         if (w.ring) notes.push(`<span class="chip ring">Ring ${w.cb}→${v.cb}</span>`);
@@ -648,6 +652,7 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
         if (w.dW) notes.push(`<span class="chip ${Math.abs(w.dW) > 0.5 ? 'd2' : 'd1'}">${sgn(w.dW)}″ W</span>`);
         if (w.lug) notes.push(`<span class="chip warn">${w.seat} lugs</span>`);
         for (const u of w.unknown) notes.push(`<span class="chip warn">no ${u}</span>`);
+        if (w.boreRounded) notes.push(`<span class="chip warn" title="Written as ${w.cb} mm, the hub is ${v.cb} mm: probably rounded, measure">bore ${w.cb}?</span>`);
         if (browse) notes.push(`<span class="chip">${esc(w.pcd)}</span>`);
         else if (!notes.length) notes.push('<span class="chip ok">OE spec</span>');
         html += `<tr class="row wrow${w.id === st.wsel ? ' sel' : ''}${w.qty === 0 ? ' zero' : ''}" data-wid="${w.id}">
@@ -712,6 +717,8 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     if (w.lug) out.push({ cls: 'bad', text: `${v.make} OE lug nuts are ${SEAT[v.seat]}. These wheels need ${SEAT[w.seat]} seat${v.lug ? ', ' + v.lug : ''}. Lug set added.`,
       say: `These wheels need ${w.seat}-seat lug nuts; a set is included.` });
     if (w.ring) out.push({ cls: '', text: `Bore ${w.cb} mm on a ${v.cb} mm hub. Hub-centric rings ${w.cb}→${v.cb} are on the quote.`, say: null });
+    if (w.boreRounded) out.push({ cls: 'bad', text: `Bore is written as ${w.cb} mm on a ${v.cb} mm hub, probably rounded. Measure: it must be ${v.cb} mm or larger.`,
+      say: 'Final after we check the center bore.' });
     if (w.unknown.length) out.push({ cls: 'bad', text: `The sheet has no ${w.unknown.join(', ')} for this wheel. Measure before quoting.`,
       say: `Final after we measure the ${w.unknown.join(', ')}.` });
     if (w.minus) out.push({ cls: 'pivot', text: `Minus-size ${w.d}″ wheel. Test-fit over the brake calipers before mounting.`, say: `Minus-size ${w.d}″ wheel: needs a test-fit over the brakes.` });
