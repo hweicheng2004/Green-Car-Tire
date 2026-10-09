@@ -35,22 +35,22 @@ assert.deepEqual([empty.missingTables, empty.tires, empty.wheels], [[], 0, 0]);
 const csv = (f: string) => parseDelimited(readFileSync(new URL(`../public/samples/${f}`, import.meta.url), 'utf8'));
 const tires = csv('demo-tires.csv'), wheels = csv('demo-wheels.csv');
 const dry = await loadSheet(db, 'tires', 'demo-tires', tires, true);
-assert.deepEqual([dry.loaded, dry.rows, dry.qty, dry.rejected, dry.block], [false, 20, 85, 2, null]);
+assert.deepEqual([dry.loaded, dry.rows, dry.qty, dry.rejected, dry.block], [false, 22, 89, 2, null]);
 assert.deepEqual(dry.problems.map(p => p.row), [22, 23], 'bad rows reported by sheet row number');
 assert.equal((await setupStatus(db, {})).tires, 0, 'preview writes nothing');
 const t = await loadSheet(db, 'tires', 'demo-tires', tires, false);
 const w = await loadSheet(db, 'wheels', 'demo-wheels', wheels, false);
 assert.deepEqual([t.loaded, w.loaded, w.rows], [true, true, 11]);
 const after = await setupStatus(db, {});
-assert.deepEqual([after.tires, after.wheels], [20, 11]);
+assert.deepEqual([after.tires, after.wheels], [22, 11]);
 assert.equal((await pg.query<{ n: number }>(`select count(*)::int n from inventory_syncs where status = 'ok' and message = 'Loaded from /setup'`)).rows[0].n, 2, 'logged like a sync');
 
 // Loading again replaces, never duplicates; a sheet with no size column is refused.
 await loadSheet(db, 'tires', 'demo-tires', tires, false);
-assert.equal((await setupStatus(db, {})).tires, 20);
+assert.equal((await setupStatus(db, {})).tires, 22);
 const bad = await loadSheet(db, 'tires', 'x', [['Name', 'Qty'], ['Thing', '4']], false);
 assert.equal(bad.loaded, false); assert.ok(bad.block, 'refused with a reason');
-assert.equal((await setupStatus(db, {})).tires, 20, 'a refused load leaves stock alone');
+assert.equal((await setupStatus(db, {})).tires, 22, 'a refused load leaves stock alone');
 
 // ---- make/model list from Wheel-Size (the /setup button): every market, every make, counted against the quota
 const { seedModels } = await import('../lib/seed-models');

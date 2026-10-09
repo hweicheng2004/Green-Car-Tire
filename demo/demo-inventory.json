@@ -23,7 +23,9 @@
     ["275/60R20", "Michelin", "LTX Winter", "Winter", "N", "", "115T", "3925", "4", "349", "Yard 3"],
     ["225 65 17", "Nokian", "One", "all-season", "new", "", "102H", "2325", "4", "$1,036/set", "Rack B-08", "typed with spaces, set price"],
     ["31x10.50R15", "BFGoodrich", "Mud-Terrain KM3", "MT", "N", "", "109Q", "2024", "4", "420", "Yard 2", "flotation size: not synced"],
-    ["265/70R17", "Falken", "Wildpeak AT3W", "All terrain", "N", "", "115T", "2025", "four", "289", "Yard 1", "qty typed as a word: not synced"]
+    ["265/70R17", "Falken", "Wildpeak AT3W", "All terrain", "N", "", "115T", "2025", "four", "289", "Yard 1", "qty typed as a word: not synced"],
+    ["255/45R20", "Michelin", "Pilot Sport 4S", "Summer", "N", "", "105Y", "1525", "2", "389", "Rack C-01", "staggered front (X3 M)"],
+    ["265/45R20", "Michelin", "Pilot Sport 4S", "Summer", "N", "", "108Y", "1525", "2", "409", "Rack C-01", "staggered rear (X3 M)"]
   ],
   "Wheels": [
     ["DEMO WHEELS: made-up sample stock"],

@@ -13,9 +13,12 @@ export type CounterWheel = {
   pcd: string; pcds: string[]; cb: number | null; et: number | null; desc: string; finish: string;
   seat: 'conical' | 'ball' | 'flat' | null; qty: number; price: number | null; loc: string;
 };
-/** OE size tuple, same order as the prototype: size, load index, speed rating, trims, rim width, offset, and true when
- *  Wheel-Size lists it as an optional (non-factory) size. */
-export type CounterOe = [string, number | null, string | null, string, number | null, number | null, boolean?];
+/** OE size tuple, same order as the prototype: size, load index, speed rating, trims, rim width, offset, then true when
+ *  Wheel-Size lists it as an optional (non-factory) size, then the rear axle when the setup is staggered (the first
+ *  six are the front). */
+export type CounterOe = [string, number | null, string | null, string, number | null, number | null, boolean?, CounterRear?];
+/** Rear axle of a staggered setup: size, load index, speed rating, rim width, offset. */
+export type CounterRear = [string, number | null, string | null, number | null, number | null];
 export type CounterVehicle = {
   make: string; model: string; makeSlug: string; modelSlug: string; year: number; assumed: boolean;
   gen: string | null; bolt: string | null; cb: number | null; lug: string | null;
@@ -97,13 +100,15 @@ export function fitmentToCounter(f: Fitment, makeSlug: string, modelSlug: string
   const seen = new Set<string>();
   const list = f.oe.filter(o => SIZE.test(o.tire))
     .sort((a, b) => Number(b.stock) - Number(a.stock))
-    .filter(o => { const k = `${o.tire}|${o.rimWidth}|${o.offset}`; return !seen.has(k) && !!seen.add(k); });
+    .filter(o => { const k = `${o.tire}|${o.rimWidth}|${o.offset}|${o.staggeredRear?.tire ?? ''}`; return !seen.has(k) && !!seen.add(k); });
   return {
     make: f.make, model: f.model, makeSlug, modelSlug, year: f.year, assumed: false,
     gen: f.generationYears, bolt: f.boltPattern, cb: f.centreBoreMm, lug: f.lugThread, seat: f.lugSeat, tq: f.torqueFtLb,
     oe: list.map((o): CounterOe => {
       const t: CounterOe = [o.tire, o.loadIndex, o.speedRating, o.trims.join(', '), o.rimWidth, o.offset];
-      if (!o.stock) t.push(true);
+      const r = o.staggeredRear;
+      if (r && SIZE.test(r.tire)) t.push(!o.stock, [r.tire, r.loadIndex ?? null, r.speedRating ?? null, r.rimWidth, r.offset]);
+      else if (!o.stock) t.push(true);
       return t;
     }),
     mixed: f.mixedSpecs, source,

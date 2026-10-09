@@ -18,7 +18,7 @@ const book = demoBook as Record<string, string[][]>;
 type DemoVeh = { make: string; model: string; makeSlug: string; modelSlug: string; from: number; to: number;
   bolt: string; cb: number; lug: string; seat: 'conical' | 'ball' | 'flat'; tq: number; oe: CounterOe[] };
 const v = (make: string, model: string, modelSlug: string, from: number, to: number, bolt: string, cb: number, lug: string,
-  seat: DemoVeh['seat'], tq: number, oe: [string, number, string, string, number, number][]): DemoVeh =>
+  seat: DemoVeh['seat'], tq: number, oe: CounterOe[]): DemoVeh =>
   ({ make, model, makeSlug: make.toLowerCase(), modelSlug, from, to, bolt, cb, lug, seat, tq, oe });
 
 export const DEMO_VEHICLES: DemoVeh[] = [
@@ -34,7 +34,9 @@ export const DEMO_VEHICLES: DemoVeh[] = [
   v('Toyota', 'Corolla', 'corolla', 2019, 2024, '5×100', 54.1, 'M12×1.5', 'flat', 76, [['195/65R15', 91, 'H', 'L, LE', 6, 40], ['205/55R16', 91, 'V', 'LE, XLE', 6.5, 40], ['225/40R18', 92, 'Y', 'SE, XSE', 8, 40]]),
   v('Ford', 'F-150', 'f-150', 2015, 2020, '6×135', 87.1, 'M14×2.0', 'conical', 150, [['265/70R17', 115, 'T', 'XL, XLT', 7.5, 44], ['275/65R18', 116, 'T', 'XLT, Lariat', 7.5, 44], ['275/55R20', 111, 'T', 'Platinum, Limited', 8.5, 44]]),
   // Competition is a trim of the X3 M in Wheel-Size, not its own model: "X3 M Comp" finds the X3 M, Competition size first.
-  v('BMW', 'X3 M', 'x3-m', 2020, 2024, '5×112', 66.5, 'M14×1.25', 'ball', 103, [['255/45R20', 105, 'Y', 'X3 M', 9.5, 32], ['255/40R21', 102, 'Y', 'X3 M Competition', 9.5, 32]]),
+  v('BMW', 'X3 M', 'x3-m', 2020, 2024, '5×112', 66.5, 'M14×1.25', 'ball', 103, [
+    ['255/45R20', 105, 'Y', 'X3 M', 9.5, 32, false, ['265/45R20', 108, 'Y', 10.5, 40]],
+    ['255/40R21', 102, 'Y', 'X3 M Competition', 9.5, 32, false, ['265/40R21', 105, 'Y', 10.5, 40]]]),
   v('Mazda', 'CX-5', 'cx-5', 2017, 2024, '5×114.3', 67.1, 'M12×1.5', 'conical', 80, [['225/65R17', 102, 'H', 'GX, GS', 7, 50], ['225/55R19', 99, 'V', 'GT, Signature', 7, 45]]),
   v('Ford', 'Escape', 'escape', 2020, 2024, '5×108', 63.4, 'M14×1.5', 'conical', 100, [['225/65R17', 102, 'H', 'S, SE', 7, 52], ['225/60R18', 100, 'H', 'SEL', 7.5, 52], ['225/55R19', 99, 'H', 'Titanium', 8, 52]]),
 ];

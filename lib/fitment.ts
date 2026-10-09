@@ -13,7 +13,7 @@ export type OeSize = {
   pressurePsi: { front: number | null; rear: number | null };  // door placard pressure
   extraLoad: boolean;     // OE spec calls for XL tires
   steelRim: boolean;      // OE wheel is pressed steel
-  staggeredRear?: { tire: string; rimWidth: number | null; offset: number | null };
+  staggeredRear?: { tire: string; rimWidth: number | null; offset: number | null; loadIndex?: number | null; speedRating?: string | null };
 };
 
 /** "2019–2023" -> [2019, 2023]; "2022–" (current generation) -> [2022, null]. */
@@ -126,7 +126,8 @@ export function normalize(mods: WsModification[], year: number): Fitment | null 
       if (w.rear && !w.showing_fp_only) {
         const rt = tireKey(w.rear.tire || w.rear.tire_full);
         const rp = rimFromString(w.rear.rim);
-        if (rt && rt !== tire) rear = { tire: rt, rimWidth: num(w.rear.rim_width) ?? rp?.width ?? null, offset: num(w.rear.rim_offset) ?? rp?.et ?? null };
+        if (rt && rt !== tire) rear = { tire: rt, rimWidth: num(w.rear.rim_width) ?? rp?.width ?? null, offset: num(w.rear.rim_offset) ?? rp?.et ?? null,
+          loadIndex: sideLI(w.rear), speedRating: sideSR(w.rear) };
       }
       const k = `${stock}|${tire}|${rimWidth}|${offset}|${rear?.tire ?? ''}`;  // factory vs optional kept apart
       const e = sizes.get(k);

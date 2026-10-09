@@ -50,27 +50,48 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   try { const s = JSON.parse(localStorage.getItem('gct-fees') || 'null'); if (s) fees = { ...fees, ...s }; } catch (e) {}
   if (!fees.tc) fees.tc = data.fees.tc || '';   // a blank on this PC never hides the shop-wide TireConnect address
 
-  const st = { mode: 'none', veh: null, oeIdx: 0, target: null, oe: null, rows: [], excluded: [], sel: null, qty: 4, season: 'all', cond: 'all', stock: true,
+  const st = { mode: 'none', veh: null, oeIdx: 0, target: null, oe: null, rows: [], excluded: [], sel: null, pick: { F: null, R: null }, axles: 'both', qty: 4, season: 'all', cond: 'all', stock: true,
     tab: 'tires', wrows: [], wex: [], wsel: null, wtype: 'all', wcond: 'all', sensors: false, query: '', subject: null };
   let vseq = 0, vtimer = null;
   // A new vehicle or size is a new customer: quantity goes back to a set of 4. Switching OE size on the same vehicle keeps it.
-  function setSubject(k) { if (k !== st.subject) { st.subject = k; st.qty = 4; } }
+  function setSubject(k) { if (k !== st.subject) { st.subject = k; st.qty = 4; st.axles = 'both'; } }
 
   // ---------- Fitment math ----------
   function compute() { computeTires(); computeWheels(); }
   // Nothing searched (first load, after Clear, or while still typing): browse the whole inventory, grouped by size.
   const browsing = () => st.mode === 'none';
   const bySize = (a, b) => a.s.r - b.s.r || a.s.w - b.s.w || a.s.a - b.s.a;
+  // Staggered setup (different front and rear sizes, BMW M, Mustang...): the OE entry carries its rear axle, and the
+  // tire list and quote work per axle. Rows get a key ('F12' / 'R12') because one tire could sit under either axle.
+  const curOe = () => (st.mode === 'vehicle' && st.veh && st.veh.v.oe[st.oeIdx]) || null;
+  const rearOf = () => { const o = curOe(); return o && o[7] ? o[7] : null; };
+  const stag = () => !!(st.target && rearOf());
+  /** Front, then rear for a staggered setup: [{ axle, target, li, sr }]. Not staggered: one axle ''. */
+  function axles() {
+    const r = rearOf();
+    if (!st.target) return [];
+    if (!r) return [{ axle: '', target: st.target, li: st.oe ? st.oe.li : null, sr: st.oe ? st.oe.sr : null }];
+    return [{ axle: 'F', target: st.target, li: st.oe.li, sr: st.oe.sr }, { axle: 'R', target: parseSize(r[0]), li: r[1], sr: r[2] }];
+  }
   function computeTires() {
-    const tgt = st.target, oe = st.oe; st.rows = []; st.excluded = [];
-    if (!tgt) {
-      if (browsing()) st.rows = INV.map(t => ({ ...t, group: 'size:' + t.size, delta: 0, srWarn: false }))
+    st.rows = []; st.excluded = [];
+    if (!st.target) {
+      if (browsing()) st.rows = INV.map(t => ({ ...t, key: t.id, axle: '', group: 'size:' + t.size, delta: 0, srWarn: false }))
         .sort((a, b) => bySize(a, b) || Number(a.used) - Number(b.used) || (a.price ?? 1e9) - (b.price ?? 1e9));
       return;
     }
+    const ax = axles();
+    for (const a of ax) matchTires(a, ax.filter(o => o !== a).map(o => o.target.key));
+    st.rows.sort((a, b) => a.axle.localeCompare(b.axle) || (a.group === b.group ? 0 : a.group === 'exact' ? -1 : 1) || Math.abs(a.delta) - Math.abs(b.delta)
+      || (b.qty > 0) - (a.qty > 0) || (a.price ?? 1e9) - (b.price ?? 1e9));
+  }
+  /** `other`: the other axle's OE size on a staggered car, never offered as an alternate for this axle. */
+  function matchTires({ axle, target: tgt, li, sr }, other = []) {
+    const oe = li != null || sr ? { li, sr } : null;
     const d0 = dia(tgt), ex = new Map();
     for (const t of byRim.get(tgt.r) || []) {
       let group = null, delta = 0;
+      if (other.includes(t.size)) continue;
       if (t.size === tgt.key) group = 'exact';
       else if (Math.abs(t.s.w - tgt.w) <= 10) {
         delta = (dia(t.s) - d0) / d0 * 100;
@@ -79,13 +100,12 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
       if (!group) continue;
       // Below the OE load index (or unknown): never offered for this vehicle.
       if (oe && oe.li != null && (t.li ?? 0) < oe.li) {
-        const e = ex.get(t.size) || { size: t.size, li: t.li, n: 0 }; e.n += t.qty; e.li = Math.max(e.li ?? 0, t.li ?? 0); ex.set(t.size, e); continue;
+        const e = ex.get(t.size) || { size: t.size, li: t.li, oeLi: oe.li, n: 0 }; e.n += t.qty; e.li = Math.max(e.li ?? 0, t.li ?? 0); ex.set(t.size, e); continue;
       }
-      st.rows.push({ ...t, group, delta, srWarn: !!(oe && oe.sr && t.sr && t.season !== 'W' && srRank(t.sr) < srRank(oe.sr)) });
+      st.rows.push({ ...t, key: axle ? axle + t.id : t.id, axle, oeLi: li, oeSr: sr, group, delta,
+        srWarn: !!(oe && oe.sr && t.sr && t.season !== 'W' && srRank(t.sr) < srRank(oe.sr)) });
     }
-    st.excluded = [...ex.values()];
-    st.rows.sort((a, b) => (a.group === b.group ? 0 : a.group === 'exact' ? -1 : 1) || Math.abs(a.delta) - Math.abs(b.delta)
-      || (b.qty > 0) - (a.qty > 0) || (a.price ?? 1e9) - (b.price ?? 1e9));
+    st.excluded.push(...ex.values());
   }
   function suggestTire(d, ref) {
     const d0 = dia(parseSize(ref.size)); let best = null;
@@ -110,8 +130,9 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     if (st.mode !== 'vehicle') return;
     const v = st.veh.v;
     if (!v.bolt) return;
-    const rims = v.oe.map(o => ({ size: o[0], li: o[1], d: parseSize(o[0]).r, w: o[4], et: o[5] }));
-    const ds = rims.map(r => r.d), minD = Math.min(...ds), maxD = Math.max(...ds), cur = rims[st.oeIdx];
+    const rims = v.oe.flatMap(o => [{ size: o[0], li: o[1], d: parseSize(o[0]).r, w: o[4], et: o[5] },
+      ...(o[7] ? [{ size: o[7][0], li: o[7][1], d: parseSize(o[7][0]).r, w: o[7][3], et: o[7][4] }] : [])]);   // staggered: rear rims fit too
+    const ds = rims.map(r => r.d), minD = Math.min(...ds), maxD = Math.max(...ds), cur = { d: parseSize(v.oe[st.oeIdx][0]).r };
     for (const w of WHL) {
       if (!w.pcds.includes(v.bolt) || w.d < minD - 1 || w.d > maxD + 1) continue;
       if (v.cb != null && w.cb != null && w.cb < v.cb - 0.05) { st.wex.push({ w, why: `bore ${w.cb} mm is smaller than the ${v.cb} mm hub` }); continue; }
@@ -141,8 +162,15 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   function autoSelect() {
     if (browsing()) { st.sel = null; st.wsel = null; return; }   // browsing: nothing is quoted until someone picks a line
     const v = visible();
-    const pick = v.find(r => r.group === 'exact' && r.qty > 0) || v.find(r => r.qty > 0) || v[0];
-    st.sel = pick ? pick.id : null;
+    const best = list => list.find(r => r.group === 'exact' && r.qty > 0) || list.find(r => r.qty > 0) || list[0];
+    if (stag()) {
+      const f = best(v.filter(r => r.axle === 'F')), r = best(v.filter(r => r.axle === 'R'));
+      st.pick = { F: f ? f.key : null, R: r ? r.key : null };
+      st.sel = st.pick.F ?? st.pick.R;
+    } else {
+      const pick = best(v);
+      st.sel = pick ? pick.key : null; st.pick = { F: null, R: null };
+    }
     const w = visibleW();
     const wp = w.find(r => r.group === 'direct' && r.cur && r.qty > 0) || w.find(r => r.qty > 0) || w[0];
     st.wsel = wp ? wp.id : null;
@@ -384,7 +412,7 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     flush(); ++vseq; clearTimeout(vtimer); typed = null;
     clearBox('qv'); clearBox('qs');
     Object.assign(st, { mode: 'none', veh: null, target: null, oe: null, query: '', subject: null, qty: 4, season: 'all', cond: 'all',
-      stock: true, tab: 'tires', sel: null, wsel: null, wtype: 'all', wcond: 'all', sensors: false });
+      stock: true, tab: 'tires', sel: null, pick: { F: null, R: null }, axles: 'both', wsel: null, wtype: 'all', wcond: 'all', sensors: false });
     fillModelList(); compute(); autoSelect(); render();
     lastBox = 'qv'; setActive('qv'); $('qv').focus();
   }
@@ -420,6 +448,18 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   // ---------- Render ----------
   function render() { renderFit(); renderStock(); renderQuote(); }
 
+  /** One fitment: a single size, or a staggered front + rear pair kept together on one button. */
+  function oeButton(o, i) {
+    const r = o[7], opt = o[6] ? '<b class="optsz">Optional</b> · ' : '';
+    const rim = (sz, w, et) => `${parseSize(sz).r}×${q2(w)} ET${q2(et)}`;
+    const cnt = n => `<span class="cnt ${n ? 'in' : 'out'}">${n ? n + ' tires' : 'no tires'}</span>`;
+    if (!r) return `<button data-oe="${i}" aria-pressed="${i === st.oeIdx}"><span class="sz">${o[0]} <span class="lisr">${q2(o[1])}${o[2] ?? ''}</span></span>
+      <span class="trim">${opt}${esc(o[3])} · <span class="mono">${rim(o[0], o[4], o[5])}</span></span>${cnt(onHand(o[0]))}</button>`;
+    return `<button class="stag" data-oe="${i}" aria-pressed="${i === st.oeIdx}">
+      <span class="sline"><span class="axl">Front</span><span class="sz">${o[0]} <span class="lisr">${q2(o[1])}${o[2] ?? ''}</span></span>${cnt(onHand(o[0]))}</span>
+      <span class="sline"><span class="axl">Rear</span><span class="sz">${r[0]} <span class="lisr">${q2(r[1])}${r[2] ?? ''}</span></span>${cnt(onHand(r[0]))}</span>
+      <span class="trim">${opt}<b class="stagtag">Staggered</b> · ${esc(o[3])} · <span class="mono">F ${rim(o[0], o[4], o[5])} · R ${rim(r[0], r[3], r[4])}</span></span></button>`;
+  }
   function renderFit() {
     const el = $('fit');
     if (st.mode === 'vehicle') {
@@ -429,15 +469,13 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
         : v.sharedFrom ? `Wheel-Size, from the saved ${v.sharedFrom} lookup (same ${v.gen ? esc(v.gen) + ' ' : ''}generation, no lookup used)` : 'Wheel-Size';
       el.innerHTML = `<div><h2>${year} ${esc(v.make)} ${esc(v.model)}</h2>
         <div class="gen">${v.gen ? esc(v.gen) + ' generation' : ''}${assumed ? ' · no year typed, assuming latest' : ''}</div></div>
-        <div><div class="eyebrow">${v.oe.some(o => o[6]) ? 'Factory and optional sizes' : 'OE sizes'} · pick by trim</div><div class="oe">${v.oe.map((o, i) => { const n = onHand(o[0]); return `
-          <button data-oe="${i}" aria-pressed="${i === st.oeIdx}"><span class="sz">${o[0]} <span class="lisr">${q2(o[1])}${o[2] ?? ''}</span></span>
-          <span class="trim">${o[6] ? '<b class="optsz">Optional</b> · ' : ''}${esc(o[3])} · <span class="mono">${parseSize(o[0]).r}×${q2(o[4])} ET${q2(o[5])}</span></span><span class="cnt ${n ? 'in' : 'out'}">${n ? n + ' tires' : 'no tires'}</span></button>`; }).join('')}</div></div>
+        <div><div class="eyebrow">${v.oe.some(o => o[6]) ? 'Factory and optional sizes' : 'OE sizes'} · pick by trim</div><div class="oe">${v.oe.map((o, i) => oeButton(o, i)).join('')}</div></div>
         <div><div class="eyebrow">Wheel fitment</div><dl><dt>Bolt pattern (PCD)</dt><dd>${esc(v.bolt ?? '—')}</dd><dt>Center bore</dt><dd>${v.cb != null ? v.cb + ' mm' : '—'}</dd>
           <dt>Lug thread</dt><dd>${esc(v.lug ?? '—')}</dd><dt>OE lug seat</dt><dd>${v.seat ? SEAT[v.seat].split(' ')[0] : '—'}</dd><dt>Torque</dt><dd>${v.tq ? v.tq + ' ft·lb' : '—'}</dd></dl></div>
         ${v.mixed && v.mixed.length ? `<div class="warns">${v.mixed.map(m => `<div class="pivot">${esc(m)}</div>`).join('')}</div>` : ''}
         ${v.related && v.related.length ? `<div><div class="eyebrow">Other versions · own fitment</div><div class="fitlist">${v.related.map(r =>
           `<button data-y="${year}" data-mk="${esc(r.makeSlug)}" data-md="${esc(r.modelSlug)}">${year} ${esc(r.label)} →</button>`).join('')}</div></div>` : ''}
-        <div class="note">Confirm trim on the driver's door placard. ${li != null ? `Alternate tires must meet OE load index ${li}.` : 'OE load index not on file; match the placard.'} <br>${src}.</div>`;
+        <div class="note">Confirm trim on the driver's door placard. ${li != null ? `Alternate tires must meet OE load index ${li}${rearOf() && rearOf()[1] != null ? ` (rear ${rearOf()[1]})` : ''}.` : 'OE load index not on file; match the placard.'}${rearOf() ? ' Staggered: front and rear sizes differ, so tires don\'t rotate front to back.' : ''} <br>${src}.</div>`;
     } else if (st.mode === 'size') {
       const s = st.target, d = dia(s), mm = d * 25.4;
       const fits = OECACHE.get(s.key);
@@ -490,22 +528,24 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     flush();
   }
   function renderSpecial() {
-    const el = $('special'), s = st.target;
-    if (!s) { el.innerHTML = ''; return; }
-    const newIn = st.rows.some(r => r.group === 'exact' && !r.used && r.qty > 0);
-    if (newIn) { el.innerHTML = ''; return; }
-    const links = distLinks(s);
-    const usedIn = st.rows.some(r => r.qty > 0);
-    el.innerHTML = `<div class="so" role="status">
-      <div><div class="eyebrow so-label">No new tire in stock · special order</div>
+    const el = $('special');
+    let html = '';
+    for (const a of axles()) {   // staggered: one block per axle that has no new tire
+      const s = a.target, mine = st.rows.filter(r => r.axle === a.axle);
+      if (mine.some(r => r.group === 'exact' && !r.used && r.qty > 0)) continue;
+      const usedIn = mine.some(r => r.qty > 0);
+      html += `<div class="so" role="status">
+      <div><div class="eyebrow so-label">${a.axle ? (a.axle === 'F' ? 'Front · ' : 'Rear · ') : ''}No new tire in stock · special order</div>
         <div class="sosize">${s.key}</div>
-        <div class="gen">${st.oe && st.oe.li != null ? `Order load ${st.oe.li}${st.oe.sr ?? ''} or higher. ` : ''}${usedIn ? 'Used or alternate stock is listed below if the customer can\'t wait.' : 'Nothing on the shelf to pivot to.'}</div></div>
-      <div class="soact">${tcLink(s)}${links.join('')}
+        <div class="gen">${a.li != null ? `Order load ${a.li}${a.sr ?? ''} or higher. ` : ''}${usedIn ? 'Used or alternate stock is listed below if the customer can\'t wait.' : 'Nothing on the shelf to pivot to.'}</div></div>
+      <div class="soact">${tcLink(s)}${distLinks(s).join('')}
         ${tcOn() ? '' : `<a href="https://www.google.com/search?q=${encodeURIComponent(s.key + ' tire')}" target="_blank" rel="noopener">Search web ↗</a>`}
         <button id="copySize" data-size="${s.key}">Copy size</button></div>
       ${tcOn() ? '' : '<div class="feehint flush">Add your TireConnect address under Shop fees &amp; rules to order in one click.</div>'}
       <div class="gen so-copied" id="sizeCopied" role="status" hidden></div>
     </div>`;
+    }
+    el.innerHTML = html;
   }
 
   function renderTires() {
@@ -518,6 +558,11 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     if (browse) {
       const inS = st.rows.filter(r => r.qty > 0);
       ban.innerHTML = `<div class="banner info"><b>All tires</b> ${sumQ(inS)} on hand in ${new Set(inS.map(r => r.size)).size} sizes. Type a vehicle or size to narrow it down.</div>`;
+    }
+    else if (stag()) {
+      const line = a => { const ex = exactIn.filter(r => r.axle === a.axle), al = altIn.filter(r => r.axle === a.axle);
+        return `<b>${a.axle === 'F' ? 'Front' : 'Rear'} ${a.target.key}</b> ${ex.length ? `${sumQ(ex)} on hand` : al.length ? `out, ${sumQ(al)} in safe alternates` : 'nothing on hand'}`; };
+      ban.innerHTML = `<div class="banner ${exactIn.some(r => r.axle === 'F') && exactIn.some(r => r.axle === 'R') ? 'ok' : 'pivot'}">Staggered · ${axles().map(line).join(' · ')}</div>`;
     }
     else if (exactIn.length) ban.innerHTML = `<div class="banner ok"><b>${key}</b> ${sumQ(exactIn)} on hand across ${exactIn.length} line${exactIn.length > 1 ? 's' : ''}${altIn.length ? ` · ${altIn.length} safe alternate line${altIn.length > 1 ? 's' : ''} too` : ''}</div>`;
     else if (altIn.length) ban.innerHTML = `<div class="banner pivot"><b>${key}</b> is out of stock. ${sumQ(altIn)} tires in ${altIn.length} safe alternate line${altIn.length > 1 ? 's' : ''} within ±${fees.tol}% diameter.</div>`;
@@ -534,19 +579,22 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     if (!v.length) { rows.innerHTML = `<tr><td colspan="9" class="empty">No tires match these filters.</td></tr>`; }
     else {
       let html = '', last = null;
+      const ax = Object.fromEntries(axles().map(a => [a.axle, a]));
       for (const r of v) {
-        if (r.group !== last) {
-          last = r.group;
+        if (r.axle + r.group !== last) {
+          last = r.axle + r.group;
+          const a = ax[r.axle], side = r.axle ? `${r.axle === 'F' ? 'Front' : 'Rear'} · ` : '';
           const sz = r.group.startsWith('size:') ? st.rows.filter(x => x.size === r.size && x.qty > 0) : null;
           html += sz ? `<tr class="grp"><td colspan="9">${r.size}<span>${sumQ(sz)} on hand</span></td></tr>`
-            : r.group === 'exact' ? `<tr class="grp"><td colspan="9">${st.mode === 'vehicle' ? 'OE size' : 'Exact size'}<span>${key}</span></td></tr>`
-            : `<tr class="grp"><td colspan="9">Safe alternates<span>±${fees.tol}% diameter · same ${st.target.r}″ wheel${st.oe && st.oe.li != null ? ` · load ≥ ${st.oe.li}` : ''}</span></td></tr>`;
+            : r.group === 'exact' ? `<tr class="grp${r.axle ? ' axle' : ''}"><td colspan="9">${side}${st.mode === 'vehicle' ? 'OE size' : 'Exact size'}<span>${a.target.key}</span></td></tr>`
+            : `<tr class="grp${r.axle ? ' axle' : ''}"><td colspan="9">${side}Safe alternates<span>±${fees.tol}% diameter · same ${a.target.r}″ wheel${a.li != null ? ` · load ≥ ${a.li}` : ''}</span></td></tr>`;
         }
         const dc = Math.abs(r.delta) < 1 ? 'd0' : Math.abs(r.delta) < 2 ? 'd1' : 'd2';
         const delta = r.group === 'alt' ? `<span class="chip ${dc}">${r.delta > 0 ? '+' : '−'}${Math.abs(r.delta).toFixed(1)}%</span>` : '';
         const sea = r.season === 'W' ? '<span class="chip w">Winter</span>' : r.season === 'AW' ? '<span class="chip aw">All-wthr</span>'
           : r.season === 'S' ? '<span class="chip">Summer</span>' : r.season === 'AS' ? '<span class="chip">All-szn</span>' : '<span class="chip">?</span>';
-        html += `<tr class="row${r.id === st.sel ? ' sel' : ''}${r.qty === 0 ? ' zero' : ''}" data-id="${r.id}">
+        const on = r.key === st.sel || (r.axle && st.pick[r.axle] === r.key);
+        html += `<tr class="row${on ? ' sel' : ''}${r.qty === 0 ? ' zero' : ''}" data-id="${r.key}">
           <td class="mono">${r.size}${delta}</td>
           <td class="tname"><b>${esc(r.brand)}</b> <span>${esc(r.model)}</span></td>
           <td>${sea}</td>
@@ -559,7 +607,7 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
       }
       rows.innerHTML = html;
     }
-    ex.innerHTML = st.excluded.length ? `<div class="excl">Hidden for this vehicle: ${st.excluded.map(e => `<b>${e.size}</b> (load ${e.li || 'unknown'} &lt; OE ${st.oe.li}, ${e.n} on hand)`).join(', ')}</div>` : '';
+    ex.innerHTML = st.excluded.length ? `<div class="excl">Hidden for this vehicle: ${st.excluded.map(e => `<b>${e.size}</b> (load ${e.li || 'unknown'} &lt; OE ${e.oeLi}, ${e.n} on hand)`).join(', ')}</div>` : '';
   }
 
   function renderWheels() {
@@ -618,7 +666,10 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     ex.innerHTML = exS.length ? `<div class="excl">Same bolt pattern but won't fit: ${exS.map(e => `<b>${wsize(e.w)} ET${q2(e.w.et)}</b> ${esc(e.w.desc)} (${esc(e.why)})`).join('; ')}</div>` : '';
   }
 
-  function selected() { return st.rows.find(r => r.id === st.sel) || null; }
+  function selected() { return st.rows.find(r => r.key === st.sel) || null; }
+  const rowByKey = k => st.rows.find(r => r.key === k) || null;
+  function selectRow(k) { st.sel = k; const r = rowByKey(k); if (r && r.axle) st.pick[r.axle] = k; }
+  const parseKey = k => (/^\d+$/.test(k) ? +k : k);
   function selectedW() { return st.wrows.find(w => w.id === st.wsel) || null; }
   function calc(r) {
     const q = st.qty, tires = (r.price ?? 0) * q, mount = fees.mount * q, disp = fees.disp * q, tpms = fees.tpmsOn ? fees.tpms * q : 0;
@@ -635,21 +686,21 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   // never drop a caveat the screen shows. Each: { text (on screen), say (in the copied quote; null = screen only),
   // cls ('bad' | 'pivot' | ''), stop (true = the price can't be given as is: shown above the total) }.
   const pct = d => `${d > 0 ? '+' : '−'}${Math.abs(d).toFixed(1)}%`;
-  function tireCaveats(r, c) {
-    const out = [];
+  function tireCaveats(r, c, staggered = false) {
+    const out = [], side = r.axle ? (r.axle === 'F' ? 'Front: ' : 'Rear: ') : '';
     if (r.price == null) out.push({ cls: 'bad', stop: true, text: 'No price in the sheet for this line. Add it before quoting a total.', say: null });
-    if (r.qty < c.q) out.push({ cls: 'bad', stop: true, text: `Only ${r.qty} on hand. Short ${c.q - r.qty} for this quote.`, say: `Only ${r.qty} in stock right now; ${c.q - r.qty} more to order in.` });
+    if (r.qty < c.q) out.push({ cls: 'bad', stop: true, text: `${side}Only ${r.qty} on hand. Short ${c.q - r.qty} for this quote.`, say: `${side}Only ${r.qty} in stock right now; ${c.q - r.qty} more to order in.` });
     if (r.group === 'alt') {
       const at = (100 * (1 + r.delta / 100)).toFixed(1);
-      out.push({ cls: 'pivot', text: `Alternate size, ${pct(r.delta)} diameter. At an indicated 100 km/h the car will be doing ${at} km/h.`,
+      out.push({ cls: 'pivot', text: `${side}Alternate size, ${pct(r.delta)} diameter. At an indicated 100 km/h the car will be doing ${at} km/h.`,
         say: `Alternate size (${pct(r.delta)} diameter): at an indicated 100 km/h you'll be doing ${at} km/h.` });
     }
-    if (r.srWarn) out.push({ cls: 'bad', text: `Speed rating ${r.sr} is below OE ${st.oe.sr}.`, say: `Speed rating ${r.sr} is below the original ${st.oe.sr}.` });
+    if (r.srWarn) out.push({ cls: 'bad', text: `${side}Speed rating ${r.sr} is below OE ${r.oeSr}.`, say: `${side}Speed rating ${r.sr} is below the original ${r.oeSr}.` });
     if (r.used) {
       const what = `Used tire${r.tread != null ? `, ${r.tread}/32″ tread` : ''}${r.dot ? `, DOT ${r.dot}` : ''}`;
-      out.push({ cls: '', text: `${what}. Inspect before quoting firm.`, say: `${what}. Price is final after inspection.` });
+      out.push({ cls: '', text: `${side}${what}. Inspect before quoting firm.`, say: `${what}. Price is final after inspection.` });
     }
-    if (c.q === 2) out.push({ cls: '', text: 'Pairs go on the rear axle.', say: 'A pair goes on the rear axle.' });
+    if (c.q === 2 && !staggered) out.push({ cls: '', text: 'Pairs go on the rear axle.', say: 'A pair goes on the rear axle.' });
     return out;
   }
   function wheelCaveats(w, c) {
@@ -702,7 +753,48 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   // away. Caveats that block the price ride with the total; the rest sit above it, read before the number.
   const dock = (x, c, unit, cav) => `<div class="qdock">${stopsBox(cav)}${totalBox(x, c, unit)}${copyBtn(noteCount(x, cav))}</div>`;
   function renderQuote() { st.tab === 'tires' ? renderTireQuote() : renderWheelQuote(); }
+  /** Staggered quote: a pair per axle (both axles, or just the front or rear pair). */
+  function stagLines() {
+    const want = st.axles === 'both' ? ['F', 'R'] : [st.axles];
+    return want.map(a => ({ axle: a, r: rowByKey(st.pick[a]) })).filter(l => l.r).map(l => ({ ...l, q: 2 }));
+  }
+  function calcStag(lines) {
+    const q = lines.reduce((n, l) => n + l.q, 0), tires = lines.reduce((n, l) => n + (l.r.price ?? 0) * l.q, 0);
+    const mount = fees.mount * q, disp = fees.disp * q, tpms = fees.tpmsOn ? fees.tpms * q : 0;
+    const sub = tires + mount + disp + tpms, tax = sub * fees.tax / 100;
+    return { q, tires, mount, disp, tpms, sub, tax, total: sub + tax, price: lines.every(l => l.r.price != null) ? 1 : null };
+  }
+  const stagCav = lines => lines.flatMap(l => tireCaveats(l.r, { q: l.q }, true));
+  function quoteTextStag(lines, c, cav) {
+    const head = `${vehLabel()}staggered ${lines.map(l => `${l.axle === 'F' ? 'front' : 'rear'} ${l.r.brand} ${l.r.model} ${l.r.size} ${q2(l.r.li)}${l.r.sr ?? ''}${l.r.used ? ' (used)' : ''} x${l.q}`).join(' + ')}.`;
+    return withNotes(head, { price: c.price }, c, `includes mount & balance, disposal${fees.tpmsOn ? ', TPMS kit' : ''} and ${fees.tax}% HST`, cav);
+  }
+  function renderStagQuote() {
+    const el = $('quote'), lines = stagLines();
+    const seg = `<div class="qtyrow axrow" role="group" aria-label="Axles">${[['both', 'Front + rear'], ['F', 'Front pair'], ['R', 'Rear pair']].map(([k, l]) =>
+      `<button data-axles="${k}" aria-pressed="${st.axles === k}">${l}</button>`).join('')}</div>`;
+    if (!lines.length) { el.innerHTML = `${band('Tire quote', 'staggered')}${seg}<div class="gen">Pick a ${st.axles === 'R' ? 'rear' : 'front'} tire to price it installed.</div>`; return; }
+    const c = calcStag(lines), cav = stagCav(lines), rest = cav.filter(k => !k.stop);
+    const missing = st.axles === 'both' && lines.length < 2 ? `<div class="warns"><div class="bad">No ${lines[0].axle === 'F' ? 'rear' : 'front'} tire picked. Click one in the ${lines[0].axle === 'F' ? 'Rear' : 'Front'} group.</div></div>` : '';
+    el.innerHTML = `
+      ${band('Tire quote · staggered', st.mode === 'vehicle' ? st.veh.year + ' ' + esc(st.veh.v.model) : '')}
+      ${lines.map(l => `<div class="qhead stagq"><div class="axl">${l.axle === 'F' ? 'Front' : 'Rear'}</div><div class="tire">${esc(l.r.brand)} ${esc(l.r.model)}</div>
+        <div class="spec">${l.r.size} ${q2(l.r.li)}${l.r.sr ?? ''}${l.r.xl ? ' XL' : ''} · ${SEASON[l.r.season] ?? 'Season not set'} · ${l.r.used ? 'Used' : 'New'} · pull from ${esc(l.r.loc || '—')} (${l.r.qty} on hand)</div></div>`).join('')}
+      ${seg}
+      <div class="lines">
+        ${lines.map(l => `<span>${l.axle === 'F' ? 'Front' : 'Rear'} ${l.q} × ${money(l.r.price)}</span><span class="v">${money((l.r.price ?? 0) * l.q)}</span>`).join('')}
+        <span class="muted">Mount &amp; balance ${c.q} × ${money(fees.mount)}</span><span class="v muted">${money(c.mount)}</span>
+        <span class="muted">Disposal ${c.q} × ${money(fees.disp)}</span><span class="v muted">${money(c.disp)}</span>
+        ${fees.tpmsOn ? `<span class="muted">TPMS kit ${c.q} × ${money(fees.tpms)}</span><span class="v muted">${money(c.tpms)}</span>` : ''}
+        <span class="sep"></span>
+        <span>Subtotal</span><span class="v">${money(c.sub)}</span>
+        <span class="muted">HST ${fees.tax}%</span><span class="v muted">${money(c.tax)}</span>
+      </div>
+      ${missing}${rest.length ? `<div class="warns">${cavHtml(rest)}</div>` : ''}
+      ${dock({ price: c.price }, c, 'tire installed', cav)}`;
+  }
   function renderTireQuote() {
+    if (stag()) return renderStagQuote();
     const el = $('quote'), r = selected();
     if (!r) { el.innerHTML = `${band('Out-the-door quote')}<div class="gen">Pick a tire to price it installed.</div>`; return; }
     const c = calc(r), cav = tireCaveats(r, c), rest = cav.filter(k => !k.stop);
@@ -759,19 +851,21 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   function moveSel(dir) {
     const W = st.tab === 'wheels', v = W ? visibleW() : visible(); if (!v.length) return;
     const cur = W ? st.wsel : st.sel;
-    let i = v.findIndex(r => r.id === cur); i = i < 0 ? 0 : Math.max(0, Math.min(v.length - 1, i + dir));
-    if (W) st.wsel = v[i].id; else st.sel = v[i].id;
+    let i = v.findIndex(r => (W ? r.id : r.key) === cur); i = i < 0 ? 0 : Math.max(0, Math.min(v.length - 1, i + dir));
+    if (W) st.wsel = v[i].id; else selectRow(v[i].key);
     renderStock(); renderQuote();
     const row = document.querySelector(W ? `tr.wrow[data-wid="${st.wsel}"]` : `tr.row[data-id="${st.sel}"]`); if (row) row.scrollIntoView({ block: 'nearest' });
   }
   /** `flash`: set from the keyboard, so the change is shown (a stray digit should never pass unnoticed). */
   function setQty(n, flash = false) {
-    st.qty = n; renderQuote();
+    st.qty = n; if (stag() && n === 4) st.axles = 'both';
+    renderQuote();
     const b = flash && document.querySelector(`.qtyrow button[data-qty="${n}"]`); if (b) b.classList.add('flash');
   }
   function copyQuote() {
     let txt, n;
     if (st.tab === 'wheels') { const w = selectedW(); if (!w || st.mode !== 'vehicle') return; const c = calcW(w), cav = wheelCaveats(w, c); txt = quoteTextW(w, c, cav); n = noteCount(w, cav); }
+    else if (stag()) { const lines = stagLines(); if (!lines.length) return; const c = calcStag(lines), cav = stagCav(lines); txt = quoteTextStag(lines, c, cav); n = noteCount({ price: c.price }, cav); }
     else { const r = selected(); if (!r) return; const c = calc(r), cav = tireCaveats(r, c); txt = quoteText(r, c, cav); n = noteCount(r, cav); }
     flush();
     const out = $('copied');
@@ -785,7 +879,7 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     const ord = e.target.closest('a[data-order]');
     if (ord) { copyForOrder(ord.dataset.order, ord.dataset.filled === 'true'); return; }
     if (e.target.closest('#clearAll')) { newCustomer(); return; }
-    const b = e.target.closest('[data-y],[data-pick],#lookupGo,#lookupNo,#lookupSize,[data-s],[data-oe],[data-tab],[data-season],[data-cond],[data-wtype],[data-wcond],[data-qty],tr.wrow,tr.row,#copy,#copySize,#toTires'); if (!b) return;
+    const b = e.target.closest('[data-axles],[data-y],[data-pick],#lookupGo,#lookupNo,#lookupSize,[data-s],[data-oe],[data-tab],[data-season],[data-cond],[data-wtype],[data-wcond],[data-qty],tr.wrow,tr.row,#copy,#copySize,#toTires'); if (!b) return;
     if (b.dataset.y) setVehicle(+b.dataset.y, b.dataset.mk, b.dataset.md);
     else if (b.dataset.pick) { pendingPick = +b.dataset.pick; renderPopup(); }
     else if (b.id === 'lookupGo') confirmLookup();
@@ -806,7 +900,8 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     }
     else if (b.id === 'toTires') { const keep = st.wsel; st.tab = 'tires'; setOE(+b.dataset.oeidx); st.wsel = keep; renderQuote(); }
     else if (b.matches('tr.wrow')) { st.wsel = +b.dataset.wid; flush(); renderStock(); renderQuote(); }
-    else if (b.matches('tr.row')) { st.sel = +b.dataset.id; flush(); renderStock(); renderQuote(); }
+    else if (b.matches('tr.row')) { selectRow(parseKey(b.dataset.id)); flush(); renderStock(); renderQuote(); }
+    else if (b.dataset.axles) { st.axles = b.dataset.axles; renderQuote(); }
   });
   on(document, 'change', e => {
     if (e.target.id === 'instock') { st.stock = e.target.checked; autoSelect(); render(); }

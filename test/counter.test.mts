@@ -66,8 +66,8 @@ assert.deepEqual(await relatedModels(relDb, 'honda', 'cr-v'), [], 'cr-v has no p
 // ---- demo inventory = the demo sheet through the real cleaner
 const inv = demoInventory();
 assert.equal(inv.mode, 'demo');
-assert.equal(inv.tires.length, 20); assert.equal(inv.wheels.length, 11);
-assert.equal(inv.tires.reduce((n, t) => n + t.qty, 0), 85);
+assert.equal(inv.tires.length, 22); assert.equal(inv.wheels.length, 11);
+assert.equal(inv.tires.reduce((n, t) => n + t.qty, 0), 89);
 assert.ok(!inv.tires.some(t => t.size.startsWith('31x')), 'rejected rows stay off the counter');
 const nokian = inv.tires.find(t => t.brand === 'Nokian' && t.model === 'One')!;
 assert.deepEqual([nokian.size, nokian.price, nokian.season], ['225/65R17', 259, 'AS'], 'messy "225 65 17" and "$1,036/set" cleaned');
@@ -93,6 +93,16 @@ assert.equal(cv.cb, 56.1);
 assert.ok(cv.oe.some(o => o[0] === '225/65R17' && o[1] === 102 && o[5] === 55), 'OE tuple: size, load, ..., offset');
 assert.deepEqual(cv.oe.map(o => o[0]), ['225/65R17', '225/60R18', '245/60R17', '245/55R18', '245/55R18', '245/50R19'], 'every Wheel-Size size, factory first');
 assert.deepEqual(cv.oe.map(o => !!o[6]), [false, false, true, true, true, true], 'optional sizes flagged');
+// Staggered: front and rear stay together on one fitment; a different rear makes a different fitment.
+const stagFit = { ...normalize([...seen.values()], 2018)!, oe: [
+  { tire: '255/40R21', loadIndex: 102, speedRating: 'Y', trims: ['Competition'], rimDiameter: 21, rimWidth: 9.5, offset: 32, stock: true,
+    pressurePsi: { front: null, rear: null }, extraLoad: true, steelRim: false, staggeredRear: { tire: '265/40R21', rimWidth: 10.5, offset: 40, loadIndex: 105, speedRating: 'Y' } },
+  { tire: '255/40R21', loadIndex: 102, speedRating: 'Y', trims: ['Option'], rimDiameter: 21, rimWidth: 9.5, offset: 32, stock: false,
+    pressurePsi: { front: null, rear: null }, extraLoad: true, steelRim: false, staggeredRear: { tire: '285/35R21', rimWidth: 10.5, offset: 40, loadIndex: 105, speedRating: 'Y' } },
+] };
+const sv = fitmentToCounter(stagFit, 'bmw', 'x3-m', 'cache');
+assert.deepEqual(sv.oe.map(o => [o[0], o[6], o[7]?.[0]]), [['255/40R21', false, '265/40R21'], ['255/40R21', true, '285/35R21']], 'staggered pairs kept per fitment');
+assert.deepEqual(sv.oe[0][7], ['265/40R21', 105, 'Y', 10.5, 40]);
 assert.ok(cv.oe.every(o => /^\d{3}\/\d{2}R\d{2}$/.test(o[0])));
 
 const fees = feesFromSettings([
