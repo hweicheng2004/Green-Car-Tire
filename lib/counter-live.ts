@@ -4,6 +4,7 @@ import type { TireRow, WheelRow } from './inventory-clean';
 import { findModelsBy, relatedModels } from './vehicle-lookup';
 import { compact } from './vehicle-query';
 import { getFitment, hitsToday, DAILY_LIMIT } from './fitment-lookup';
+import { generationRange } from './fitment';
 import { regions } from './wheelsize';
 import { syncStatus } from './inventory-sync-store';
 import { explainDbError } from './db-errors';
@@ -45,10 +46,16 @@ export async function liveInventory(db: SupabaseClient): Promise<CounterInventor
 
 /** Vehicles with fitment saved, for autofill in the Make and Model boxes. Names come from the saved fitment. */
 async function savedVehicles(db: SupabaseClient) {
-  const { data, error } = await db.from('vehicle_fitment').select('make_slug, model_slug, year, make:data->>make, model:data->>model').limit(5000);
+  const { data, error } = await db.from('vehicle_fitment')
+    .select('make_slug, model_slug, year, make:data->>make, model:data->>model, gen:data->>generationYears').limit(5000);
   if (error) throw error;
-  return groupSaved((data as { make_slug: string; model_slug: string; year: number; make: string | null; model: string | null }[])
-    .map(r => ({ makeSlug: r.make_slug, modelSlug: r.model_slug, year: r.year, make: r.make || title(r.make_slug), model: r.model || title(r.model_slug) })));
+  // A saved year covers its whole generation (see getFitment), so autofill offers every year of it.
+  return groupSaved((data as { make_slug: string; model_slug: string; year: number; make: string | null; model: string | null; gen: string | null }[])
+    .flatMap(r => {
+      const g = generationRange(r.gen), end = g ? Math.min(g[1] ?? new Date().getFullYear() + 1, g[0] + 15) : r.year;
+      const years = g ? Array.from({ length: end - g[0] + 1 }, (_, i) => g[0] + i) : [r.year];
+      return years.map(year => ({ makeSlug: r.make_slug, modelSlug: r.model_slug, year, make: r.make || title(r.make_slug), model: r.model || title(r.model_slug) }));
+    }));
 }
 
 /** Year + make + model from the three counter boxes. Saved fitments only, unless `lookup` confirms a Wheel-Size
@@ -77,7 +84,8 @@ export async function liveVehicle(db: SupabaseClient, ask: VehicleAsk, lookup = 
   if ('error' in r) return { miss: { year: ask.year, label, why: r.error } };
   const src = r.cache === 'hit' ? 'cache' : r.cache === 'miss' ? 'api' : 'stale';
   const related = await relatedModels(db, m.make_slug, m.model_slug).catch(() => []);
-  return { vehicle: { ...fitmentToCounter(r.fit, m.make_slug, m.model_slug, src), ...(related.length ? { related } : {}) } };
+  return { vehicle: { ...fitmentToCounter(r.fit, m.make_slug, m.model_slug, src), ...(related.length ? { related } : {}),
+    ...('fromYear' in r && r.fromYear ? { sharedFrom: r.fromYear } : {}) } };
 }
 
 // Typed names -> Wheel-Size style slugs: "Land Rover" -> land-rover, "CR-V" -> cr-v.

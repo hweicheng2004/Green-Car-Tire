@@ -425,7 +425,8 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     if (st.mode === 'vehicle') {
       const { v, year, assumed } = st.veh;
       const li = st.oe.li;
-      const src = v.source === 'demo' ? 'Sample fitment (demo)' : v.source === 'stale' ? 'Wheel-Size, older cached copy (lookup failed just now)' : 'Wheel-Size';
+      const src = v.source === 'demo' ? 'Sample fitment (demo)' : v.source === 'stale' ? 'Wheel-Size, older cached copy (lookup failed just now)'
+        : v.sharedFrom ? `Wheel-Size, from the saved ${v.sharedFrom} lookup (same ${v.gen ? esc(v.gen) + ' ' : ''}generation, no lookup used)` : 'Wheel-Size';
       el.innerHTML = `<div><h2>${year} ${esc(v.make)} ${esc(v.model)}</h2>
         <div class="gen">${v.gen ? esc(v.gen) + ' generation' : ''}${assumed ? ' · no year typed, assuming latest' : ''}</div></div>
         <div><div class="eyebrow">${v.oe.some(o => o[6]) ? 'Factory and optional sizes' : 'OE sizes'} · pick by trim</div><div class="oe">${v.oe.map((o, i) => { const n = onHand(o[0]); return `

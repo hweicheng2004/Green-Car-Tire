@@ -2,14 +2,15 @@
 // Shared by GET /api/fitment and the counter's vehicle lookup.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { searchAllRegions, regionKey, WheelSizeError } from './wheelsize';
-import { normalize, type Fitment } from './fitment';
+import { normalize, generationCovers, type Fitment } from './fitment';
 
 const STALE_DAYS = () => Number(process.env.WHEELSIZE_CACHE_DAYS || 180);
 export const DAILY_LIMIT = () => Number(process.env.WHEELSIZE_DAILY_LIMIT || 300);  // sandbox plan = 300/day
 
-/** cache: hit · miss: fetched now · stale-quota / stale-error: old cache served because Wheel-Size wasn't usable. */
+/** cache: hit · miss: fetched now · stale-quota / stale-error: old cache served because Wheel-Size wasn't usable.
+ *  fromYear: no lookup for this year, so the saved fitment of another year in the same generation was used. */
 export type FitmentResult =
-  | { fit: Fitment; cache: 'hit' | 'miss' | 'stale-error' }
+  | { fit: Fitment; cache: 'hit' | 'miss' | 'stale-error'; fromYear?: number }
   | { notCached: true }
   | { error: string; status: number };
 
@@ -22,6 +23,12 @@ export async function getFitment(db: SupabaseClient, make: string, model: string
 
   const ageDays = cached ? (Date.now() - new Date(cached.fetched_at).getTime()) / 864e5 : Infinity;
   if (cached && ((ageDays < STALE_DAYS() && !refresh) || !allowApi)) return { fit: withOverride(cached.data as Fitment, cached.lug_seat), cache: 'hit' };
+  // Same generation, other year (2021 asked, 2020 saved, generation 2019–2023): same fitment, no lookup. Saved as this
+  // year too, so it shows up by year everywhere (size searches, autofill).
+  if (!cached && !refresh) {
+    const gen = await sameGeneration(db, make, model, year, REGION);
+    if (gen) return gen;
+  }
   if (!allowApi) return { notCached: true };
 
   // Protect the daily quota: count each call before making it; if over, serve stale cache rather than fail.
@@ -49,6 +56,22 @@ export async function getFitment(db: SupabaseClient, make: string, model: string
     if (cached) return { fit: withOverride(cached.data as Fitment, cached.lug_seat), cache: 'stale-error' };
     return { error: (e as Error).message, status: e instanceof WheelSizeError ? e.status : 502 };
   }
+}
+
+async function sameGeneration(db: SupabaseClient, make: string, model: string, year: number, region: string): Promise<FitmentResult | null> {
+  const { data, error } = await db.from('vehicle_fitment').select('year, data, lug_seat, fetched_at')
+    .match({ make_slug: make, model_slug: model, region }).limit(100);
+  if (error || !data) return null;
+  const best = (data as { year: number; data: Fitment; lug_seat: string | null; fetched_at: string }[])
+    .filter(r => generationCovers(r.data?.generationYears, year))
+    .sort((a, b) => Math.abs(a.year - year) - Math.abs(b.year - year) || b.fetched_at.localeCompare(a.fetched_at))[0];
+  if (!best) return null;
+  const fit: Fitment = { ...best.data, year };
+  const { error: saveErr } = await db.from('vehicle_fitment').upsert({
+    make_slug: make, model_slug: model, year, region, data: fit, lug_seat: best.lug_seat, fetched_at: best.fetched_at,
+  });
+  if (!saveErr) await db.rpc('sync_fitment_oe_sizes', { p_make: make, p_model: model, p_year: year, p_region: region });
+  return { fit: withOverride(fit, best.lug_seat), cache: 'hit', fromYear: best.year };
 }
 
 /** Wheel-Size hits used today (UTC day, same as the quota counter). */

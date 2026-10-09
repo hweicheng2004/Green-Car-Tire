@@ -24,6 +24,7 @@ export type CounterVehicle = {
    *  fitment, often different wheels, so they're offered as one-click switches rather than merged in. */
   related?: { makeSlug: string; modelSlug: string; label: string }[];
   source: 'demo' | 'cache' | 'api' | 'stale';
+  sharedFrom?: number;   // fitment saved from this year's lookup, same generation (no lookup spent on this year)
 };
 /** What the three vehicle boxes send. make/model are names or slugs; year null = not typed yet. */
 export type VehicleAsk = { year: number | null; make: string; model: string };

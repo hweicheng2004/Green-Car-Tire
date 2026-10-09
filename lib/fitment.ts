@@ -16,6 +16,17 @@ export type OeSize = {
   staggeredRear?: { tire: string; rimWidth: number | null; offset: number | null };
 };
 
+/** "2019–2023" -> [2019, 2023]; "2022–" (current generation) -> [2022, null]. */
+export function generationRange(s: string | null | undefined): [number, number | null] | null {
+  const m = String(s ?? '').match(/(\d{4})\s*[–-]\s*(\d{4})?/);
+  return m ? [Number(m[1]), m[2] ? Number(m[2]) : null] : null;
+}
+/** Whether a saved fitment's generation covers `year`. An open-ended generation counts up to next year. */
+export function generationCovers(s: string | null | undefined, year: number): boolean {
+  const r = generationRange(s);
+  return !!r && year >= r[0] && year <= (r[1] ?? new Date().getFullYear() + 1);
+}
+
 export type Fitment = {
   make: string; model: string; year: number;
   generation: string | null;

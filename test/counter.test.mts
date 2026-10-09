@@ -136,17 +136,19 @@ assert.deepEqual(['18', '2018', '99', '1999', '201', '', 'abc', String(yNow + 5)
 const { liveVehicle } = await import('../lib/counter-live');
 const models = [{ make_slug: 'mazda', make_name: 'Mazda', model_slug: 'cx-5', model_name: 'CX-5', model_compact: 'cx5' },
   { make_slug: 'mazda', make_name: 'Mazda', model_slug: 'cx-50', model_name: 'CX-50', model_compact: 'cx50' }];
-let wsCalls = 0, saved: unknown = null;
+let wsCalls = 0;
+const savedRows = new Map<number, { year: number; data: any; lug_seat: null; fetched_at: string }>();
 const q = (table: string) => {
   const f: Record<string, unknown> = {};
   const chain: any = {
     select: () => chain, in: () => chain, order: () => chain, limit: () => chain,
     eq: (k: string, v: unknown) => { f[k] = v; return chain; }, like: (k: string, v: string) => { f[k] = v; return chain; },
     match: (m: Record<string, unknown>) => { Object.assign(f, m); return chain; },
-    maybeSingle: async () => ({ data: table === 'vehicle_fitment' ? saved : table === 'wheelsize_usage' ? { hits: 40 } : null, error: null }),
-    upsert: async (row: unknown) => { saved = { data: (row as any).data, lug_seat: null, fetched_at: new Date().toISOString() }; return { error: null }; },
+    maybeSingle: async () => ({ data: table === 'vehicle_fitment' ? savedRows.get(f.year as number) ?? null : table === 'wheelsize_usage' ? { hits: 40 } : null, error: null }),
+    upsert: async (row: any) => { savedRows.set(row.year, { year: row.year, data: row.data, lug_seat: null, fetched_at: row.fetched_at ?? new Date().toISOString() }); return { error: null }; },
     then: (res: (v: unknown) => unknown) => res({ data: table === 'vehicle_models'
-      ? models.filter(m => m.make_slug === f.make_compact && m.model_compact.startsWith(String(f.model_compact).replace('%', ''))) : [], error: null }),
+      ? models.filter(m => m.make_slug === f.make_compact && m.model_compact.startsWith(String(f.model_compact).replace('%', '')))
+      : table === 'vehicle_fitment' ? [...savedRows.values()] : [], error: null }),
   };
   return chain;
 };
@@ -172,5 +174,12 @@ const l2 = await liveVehicle(fakeDb, { year: 2019, make: 'mazda', model: 'cx-5' 
 assert.ok('vehicle' in l2 && l2.vehicle.source === 'api'); assert.equal(wsCalls, 2, 'confirmed: one hit per market');
 const l3 = await liveVehicle(fakeDb, { year: 2019, make: 'Mazda', model: 'CX-5' });
 assert.ok('vehicle' in l3 && l3.vehicle.source === 'cache'); assert.equal(wsCalls, 2, 'saved now: free');
+// Another year in the same generation reuses the saved fitment (and saves it under that year); outside it, it asks.
+const gen = (l2 as any).vehicle.gen as string, [g0, g1] = gen.split('–').map(Number);
+const other = g0 === 2019 ? g1 : g0;
+const l4 = await liveVehicle(fakeDb, { year: other, make: 'Mazda', model: 'CX-5' });
+assert.ok('vehicle' in l4 && l4.vehicle.sharedFrom === 2019 && l4.vehicle.year === other, `same generation (${gen}): ${other} uses the 2019 lookup`);
+assert.equal(wsCalls, 2, 'same generation: free'); assert.ok(savedRows.has(other), 'saved under the new year');
+assert.ok('needsLookup' in await liveVehicle(fakeDb, { year: g0 - 1, make: 'Mazda', model: 'CX-5' }), 'previous generation still asks');
 globalThis.fetch = prevFetch;
 console.log('VEHICLE LOOKUP TEST PASSED');
