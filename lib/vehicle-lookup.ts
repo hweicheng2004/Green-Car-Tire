@@ -65,3 +65,17 @@ export async function modelCatalog(db: SupabaseClient): Promise<Catalog> {
   }
   return [...makes.values()];
 }
+
+/** Other models of the same car: "civic" -> civic-type-r, civic-si...; "civic-type-r" -> civic. From the local list, no API. */
+export async function relatedModels(db: SupabaseClient, makeSlug: string, modelSlug: string) {
+  const parts = modelSlug.split('-'), parents = parts.slice(1).map((_, i) => parts.slice(0, i + 1).join('-'));
+  const [kids, up] = await Promise.all([
+    db.from('vehicle_models').select('model_slug, model_name, make_name').in('region', regions())
+      .eq('make_slug', makeSlug).like('model_slug', `${modelSlug}-%`).limit(12),
+    parents.length ? db.from('vehicle_models').select('model_slug, model_name, make_name').in('region', regions())
+      .eq('make_slug', makeSlug).in('model_slug', parents).limit(6) : Promise.resolve({ data: [], error: null }),
+  ]);
+  const rows = [...(up.data ?? []), ...(kids.data ?? [])] as { model_slug: string; model_name: string; make_name: string }[];
+  return [...new Map(rows.filter(r => r.model_slug !== modelSlug).map(r => [r.model_slug, r])).values()].slice(0, 6)
+    .map(r => ({ makeSlug, modelSlug: r.model_slug, label: `${r.make_name} ${r.model_name}` }));
+}

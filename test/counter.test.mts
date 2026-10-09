@@ -39,7 +39,29 @@ assert.ok('needsLookup' in esc && esc.needsLookup.hitsToday === 2, 'quota shown 
 assert.deepEqual(demoOeOn('225/65R17').map(v => v.label).slice(0, 2), ['2015–2019 Subaru Outback', '2020–2024 Subaru Outback']);
 assert.ok(demoOeOn('225/65R17').every(v => !('none' in demoVehicle(ask(v.year, v.make, v.model)))), '"OE on" buttons fill boxes that resolve');
 const cat = demoCatalog();
-assert.deepEqual(cat.find(m => m.slug === 'honda')!.models.map(m => m.name).sort(), ['CR-V', 'Civic']);
+assert.deepEqual(cat.find(m => m.slug === 'honda')!.models.map(m => m.name).sort(), ['CR-V', 'Civic', 'Civic Type R']);
+
+// The Type R is a separate model (own bolt pattern and tires): a Civic offers it as a switch, and back.
+const civic25 = veh(2025, 'Honda', 'Civic');
+assert.deepEqual([civic25.gen, civic25.bolt, civic25.related?.map(r => r.label)], ['2022–2025', '5×114.3', ['Honda Civic Type R']], 'typing Civic gets the Civic, with the Type R offered');
+const typeR = veh(2025, 'Honda', civic25.related![0].modelSlug);
+assert.deepEqual([typeR.model, typeR.bolt, typeR.oe[0][0], typeR.related?.map(r => r.modelSlug)], ['Civic Type R', '5×120', '265/30R19', ['civic']]);
+assert.equal(veh(2025, 'Honda', 'Civic Type R').model, 'Civic Type R', 'typed in full');
+assert.equal(veh(2019, 'Honda', 'Civic').related?.[0].label, 'Honda Civic Type R');
+assert.equal(veh(2018, 'Subaru', 'Outback').related, undefined, 'no related models: no section');
+
+// Live: related models come from the local list, children and parents, never the vehicle itself.
+const { relatedModels } = await import('../lib/vehicle-lookup');
+const vm = [{ model_slug: 'civic', model_name: 'Civic', make_name: 'Honda' }, { model_slug: 'civic-type-r', model_name: 'Civic Type R', make_name: 'Honda' },
+  { model_slug: 'civic-si', model_name: 'Civic Si', make_name: 'Honda' }, { model_slug: 'cr-v', model_name: 'CR-V', make_name: 'Honda' }];
+const relDb: any = { from: () => { const f: any = {}; const c: any = {
+  select: () => c, eq: () => c, limit: () => c,
+  in: (k: string, v: string[]) => { if (k === 'model_slug') f.in = v; return c; },
+  like: (_k: string, v: string) => { f.like = v.replace('%', ''); return c; },
+  then: (res: any) => res({ data: vm.filter(r => (f.in ? f.in.includes(r.model_slug) : true) && (f.like ? r.model_slug.startsWith(f.like) : true)), error: null }) }; return c; } };
+assert.deepEqual((await relatedModels(relDb, 'honda', 'civic')).map(r => r.modelSlug).sort(), ['civic-si', 'civic-type-r']);
+assert.deepEqual((await relatedModels(relDb, 'honda', 'civic-type-r')).map(r => r.modelSlug), ['civic']);
+assert.deepEqual(await relatedModels(relDb, 'honda', 'cr-v'), [], 'cr-v has no parent "cr" and no children');
 
 // ---- demo inventory = the demo sheet through the real cleaner
 const inv = demoInventory();

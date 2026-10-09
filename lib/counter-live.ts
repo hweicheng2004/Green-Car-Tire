@@ -1,7 +1,7 @@
 // Live-mode data for the counter screen: Supabase inventory and settings, Wheel-Size fitment through the cache.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { TireRow, WheelRow } from './inventory-clean';
-import { findModelsBy } from './vehicle-lookup';
+import { findModelsBy, relatedModels } from './vehicle-lookup';
 import { compact } from './vehicle-query';
 import { getFitment, hitsToday, DAILY_LIMIT } from './fitment-lookup';
 import { regions } from './wheelsize';
@@ -68,7 +68,8 @@ export async function liveVehicle(db: SupabaseClient, ask: VehicleAsk, lookup = 
   }
   if ('error' in r) return { miss: { year: ask.year, label, why: r.error } };
   const src = r.cache === 'hit' ? 'cache' : r.cache === 'miss' ? 'api' : 'stale';
-  return { vehicle: fitmentToCounter(r.fit, m.make_slug, m.model_slug, src) };
+  const related = await relatedModels(db, m.make_slug, m.model_slug).catch(() => []);
+  return { vehicle: { ...fitmentToCounter(r.fit, m.make_slug, m.model_slug, src), ...(related.length ? { related } : {}) } };
 }
 
 // Typed names -> Wheel-Size style slugs: "Land Rover" -> land-rover, "CR-V" -> cr-v.

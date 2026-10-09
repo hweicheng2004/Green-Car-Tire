@@ -19,6 +19,9 @@ export type CounterVehicle = {
   make: string; model: string; makeSlug: string; modelSlug: string; year: number; assumed: boolean;
   gen: string | null; bolt: string | null; cb: number | null; lug: string | null;
   seat: 'conical' | 'ball' | 'flat' | null; tq: number | null; oe: CounterOe[]; mixed: string[];
+  /** Separate models of the same car in Wheel-Size (Civic <-> Civic Type R, Mustang <-> Mustang Mach-E...): their own
+   *  fitment, often different wheels, so they're offered as one-click switches rather than merged in. */
+  related?: { makeSlug: string; modelSlug: string; label: string }[];
   source: 'demo' | 'cache' | 'api' | 'stale';
 };
 /** What the three vehicle boxes send. make/model are names or slugs; year null = not typed yet. */

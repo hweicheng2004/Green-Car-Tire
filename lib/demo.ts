@@ -27,6 +27,10 @@ export const DEMO_VEHICLES: DemoVeh[] = [
   v('Toyota', 'RAV4', 'rav4', 2019, 2024, '5×114.3', 60.1, 'M12×1.5', 'flat', 76, [['225/65R17', 102, 'H', 'LE, XLE', 7, 35], ['225/60R18', 100, 'H', 'XLE Premium, Adventure', 7, 35], ['235/55R19', 101, 'V', 'Limited', 7.5, 40]]),
   v('Honda', 'CR-V', 'cr-v', 2017, 2022, '5×114.3', 64.1, 'M12×1.5', 'ball', 80, [['235/65R17', 104, 'T', 'LX', 7, 45], ['235/60R18', 103, 'H', 'EX, EX-L, Touring', 7.5, 45]]),
   v('Honda', 'Civic', 'civic', 2016, 2021, '5×114.3', 64.1, 'M12×1.5', 'ball', 80, [['215/55R16', 93, 'V', 'LX', 6.5, 45], ['215/50R17', 91, 'V', 'EX, Touring', 7, 45], ['235/40R18', 95, 'W', 'Sport', 8, 50]]),
+  v('Honda', 'Civic', 'civic', 2022, 2025, '5×114.3', 64.1, 'M12×1.5', 'ball', 80, [['215/55R16', 93, 'H', 'LX', 7, 45], ['215/50R17', 91, 'H', 'EX, Touring', 7, 50], ['235/40R18', 95, 'W', 'Sport, Si', 8, 50]]),
+  // The Type R is its own model in Wheel-Size: different bolt pattern and tires, so the Civic offers it as a switch.
+  v('Honda', 'Civic Type R', 'civic-type-r', 2017, 2021, '5×120', 64.1, 'M14×1.5', 'ball', 94, [['245/30R20', 90, 'Y', 'Type R', 8.5, 60]]),
+  v('Honda', 'Civic Type R', 'civic-type-r', 2023, 2025, '5×120', 64.1, 'M14×1.5', 'ball', 94, [['265/30R19', 93, 'Y', 'Type R', 9.5, 60]]),
   v('Toyota', 'Corolla', 'corolla', 2019, 2024, '5×100', 54.1, 'M12×1.5', 'flat', 76, [['195/65R15', 91, 'H', 'L, LE', 6, 40], ['205/55R16', 91, 'V', 'LE, XLE', 6.5, 40], ['225/40R18', 92, 'Y', 'SE, XSE', 8, 40]]),
   v('Ford', 'F-150', 'f-150', 2015, 2020, '6×135', 87.1, 'M14×2.0', 'conical', 150, [['265/70R17', 115, 'T', 'XL, XLT', 7.5, 44], ['275/65R18', 116, 'T', 'XLT, Lariat', 7.5, 44], ['275/55R20', 111, 'T', 'Platinum, Limited', 8.5, 44]]),
   v('Mazda', 'CX-5', 'cx-5', 2017, 2024, '5×114.3', 67.1, 'M12×1.5', 'conical', 80, [['225/65R17', 102, 'H', 'GX, GS', 7, 50], ['225/55R19', 99, 'V', 'GT, Signature', 7, 45]]),
@@ -36,7 +40,11 @@ export const DEMO_VEHICLES: DemoVeh[] = [
 const toCounter = (d: DemoVeh, year: number, assumed: boolean): CounterVehicle => ({
   make: d.make, model: d.model, makeSlug: d.makeSlug, modelSlug: d.modelSlug, year, assumed,
   gen: `${d.from}–${d.to}`, bolt: d.bolt, cb: d.cb, lug: d.lug, seat: d.seat, tq: d.tq, oe: d.oe, mixed: [], source: 'demo',
+  ...(demoRelated(d).length ? { related: demoRelated(d) } : {}),
 });
+const demoRelated = (d: DemoVeh) => [...new Map(DEMO_VEHICLES
+  .filter(x => x.makeSlug === d.makeSlug && x.modelSlug !== d.modelSlug && (x.modelSlug.startsWith(d.modelSlug + '-') || d.modelSlug.startsWith(x.modelSlug + '-')))
+  .map(x => [x.modelSlug, { makeSlug: x.makeSlug, modelSlug: x.modelSlug, label: `${x.make} ${x.model}` }])).values()];
 
 // To show the "look it up?" popup without accounts, these demo vehicles start as not saved. Confirming a lookup
 // "saves" them for this server instance, like a real Wheel-Size lookup saves to Supabase.

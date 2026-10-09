@@ -391,6 +391,8 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
         <div><div class="eyebrow">Wheel fitment</div><dl><dt>Bolt pattern (PCD)</dt><dd>${esc(v.bolt ?? '—')}</dd><dt>Center bore</dt><dd>${v.cb != null ? v.cb + ' mm' : '—'}</dd>
           <dt>Lug thread</dt><dd>${esc(v.lug ?? '—')}</dd><dt>OE lug seat</dt><dd>${v.seat ? SEAT[v.seat].split(' ')[0] : '—'}</dd><dt>Torque</dt><dd>${v.tq ? v.tq + ' ft·lb' : '—'}</dd></dl></div>
         ${v.mixed && v.mixed.length ? `<div class="warns">${v.mixed.map(m => `<div class="pivot">${esc(m)}</div>`).join('')}</div>` : ''}
+        ${v.related && v.related.length ? `<div><div class="eyebrow">Other versions · own fitment</div><div class="fitlist">${v.related.map(r =>
+          `<button data-y="${year}" data-mk="${esc(r.makeSlug)}" data-md="${esc(r.modelSlug)}">${year} ${esc(r.label)} →</button>`).join('')}</div></div>` : ''}
         <div class="note">Confirm trim on the driver's door placard. ${li != null ? `Alternate tires must meet OE load index ${li}.` : 'OE load index not on file; match the placard.'} <br>${src}.</div>`;
     } else if (st.mode === 'size') {
       const s = st.target, d = dia(s), mm = d * 25.4;
