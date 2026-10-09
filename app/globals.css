@@ -1,4 +1,4 @@
-/* Counter screen styles, from the clickable prototype. Tokens on :root, dark mode follows the system. */
+/* Counter screen styles, from the clickable prototype. Tokens on :root. Light mode only. */
 /* Layout: one-screen counter terminal. Omnibox spans the top; three panes below: fitment | stock on hand | out-the-door quote */
 :root{
   --bg:#E9EDF1; --panel:#FFFFFF; --panel-2:#F4F6F8; --ink:#141A21; --muted:#5A6573; --line:#D3DAE2;
@@ -11,18 +11,7 @@
   --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
 }
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#0F1318; --panel:#171C23; --panel-2:#1D232B; --ink:#E6EAEF; --muted:#94A0AE; --line:#2B333D;
-  --accent:#F2A93B; --accent-ink:#1A1206; --accent-soft:#33260F; --accent-line:#6B4D1C;
-  --ok:#5BD08A; --ok-soft:#14301F; --bad:#FF8A7A; --bad-soft:#3A1916; --cold:#7DB6F0; --cold-soft:#14273A;
-  --act:#00242F; --act-ink:#FFFFFF; --act-lime:#00F500; --act-edge:#00F500; --act-soft:#0C2A31; --act-mark:#0B5566; --rule:#4A5562;
-  color-scheme:dark}}
-:root[data-theme="dark"]{
-  --bg:#0F1318; --panel:#171C23; --panel-2:#1D232B; --ink:#E6EAEF; --muted:#94A0AE; --line:#2B333D;
-  --accent:#F2A93B; --accent-ink:#1A1206; --accent-soft:#33260F; --accent-line:#6B4D1C;
-  --ok:#5BD08A; --ok-soft:#14301F; --bad:#FF8A7A; --bad-soft:#3A1916; --cold:#7DB6F0; --cold-soft:#14273A;
-  --act:#00242F; --act-ink:#FFFFFF; --act-lime:#00F500; --act-edge:#00F500; --act-soft:#0C2A31; --act-mark:#0B5566; --rule:#4A5562;
-  color-scheme:dark}
+:root{color-scheme:light}   /* light only, whatever the system setting */
 
 html,body{height:100%}
 body{background:var(--bg);color:var(--ink);font:14px/1.45 var(--body);margin:0}
@@ -384,3 +373,23 @@ tr.imp-bad td{background:var(--bad-soft)}
 @keyframes splash-out{to{opacity:0;visibility:hidden}}
 @keyframes splash-in{from{opacity:0;transform:scale(.96)}}
 @media (prefers-reduced-motion:reduce){.splash img{animation:none}.splash{animation-duration:.01s}}
+/* /setup */
+.su-list{padding:8px 16px}
+.su-step{display:grid;grid-template-columns:36px 1fr;gap:14px;padding:16px 0;border-bottom:1px solid var(--line)}
+.su-step:last-child{border-bottom:0}
+.su-num{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font:700 16px var(--display);background:var(--panel-2);border:1.5px solid var(--line);color:var(--muted)}
+.su-step.done .su-num{background:var(--ok-soft);border-color:var(--ok);color:var(--ok)}
+.su-body{display:flex;flex-direction:column;gap:10px;min-width:0}
+.su-body h2{margin:0;font:700 20px/1.1 var(--display);text-transform:uppercase;letter-spacing:.01em}
+.su-body p{margin:0;line-height:1.5}
+.su-body .soact{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.su-body .soact a{font:600 13px var(--body);color:var(--ink)}
+.su-prev{display:flex;flex-direction:column;gap:10px;max-width:640px}
+.su-prev ul{margin:8px 0 0;padding-left:18px;line-height:1.5;font-size:13px}
+.su-prev summary{cursor:pointer;color:var(--bad)}
+.su .ok{color:var(--ok);font-weight:600} .su .bad{color:var(--bad)}
+.su-extras{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px;line-height:1.5}
+.su-extras .chip{margin:0 6px 0 0}
+.su-foot{display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+.su-go{width:auto;text-decoration:none;padding:11px 22px}
+.su code{font:12px var(--mono);background:var(--panel-2);padding:1px 4px;border-radius:3px}

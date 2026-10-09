@@ -5,24 +5,17 @@
 // 3. Every row is checked against the database rules and toSql() writes the SQL. Claude never writes SQL itself.
 import { useMemo, useState } from 'react';
 import * as C from '@/lib/inventory-clean';
+import { readSheetFile, type Sheet } from './read-sheet';
 
 type Cleaned = C.Cleaned<C.TireRow | C.WheelRow>;
 type Origin = 'rules' | 'claude';
 type Line = Cleaned & { origin: Origin };
-type Sheet = { name: string; rows: string[][] };
 type Usage = { input: number; output: number; cacheRead: number; requests: number };
 
 // Claude Opus 5.5 list prices, for an estimate only: $4 / $20 per million tokens, cache reads $0.20.
 const cost = (u: Usage) => ((u.input * 4 + u.output * 20 + u.cacheRead * 0.2) / 1e6);
 
-// SheetJS loads only when someone picks an Excel file.
-let xlsxLib: Promise<any> | null = null;
-const loadXlsx = () => (xlsxLib ??= new Promise((resolve, reject) => {
-  const s = document.createElement('script');
-  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-  s.onload = () => resolve((window as any).XLSX); s.onerror = () => { xlsxLib = null; reject(new Error('Could not load the Excel reader. Check the connection, or save as CSV.')); };
-  document.head.appendChild(s);
-}));
+
 
 function analyse(rows: string[][], kindOverride: C.Kind | null) {
   const nonEmpty = rows.filter(r => r.some(c => String(c ?? '').trim()));
@@ -77,16 +70,9 @@ export default function ImportDashboard({ claudeReady, needsPassword }: { claude
   async function onFile(f: File) {
     reset(); setError(''); setKindOverride(null);
     try {
-      if (/\.(xlsx|xls|ods)$/i.test(f.name)) {
-        const XLSX = await loadXlsx();
-        const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
-        const sheets: Sheet[] = wb.SheetNames.map((n: string) => ({
-          name: n, rows: (XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: false, defval: '' }) as unknown[][]).map(r => r.map(c => String(c ?? ''))),
-        })).filter((s: Sheet) => s.rows.some(r => r.some(c => c.trim())));
-        setBook(sheets); setTab(0); setText('');
-      } else {
-        setBook(null); setText(await f.text());
-      }
+      const sheets = await readSheetFile(f);
+      if (/\.(xlsx|xls|ods)$/i.test(f.name)) { setBook(sheets); setTab(0); setText(''); }
+      else { setBook(null); setText(await f.text()); }
       if (!source) setSource(f.name.replace(/\.[^.]+$/, ''));
     } catch (e) { setError((e as Error).message); }
   }

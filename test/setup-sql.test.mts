@@ -10,6 +10,8 @@ for (const f of readdirSync(new URL('../supabase/migrations/', import.meta.url))
   assert.ok(all.includes(body), `setup-all.sql is out of date with ${f}: run npm run setup-sql`);
 }
 
+assert.equal(readFileSync(new URL('../public/setup-all.sql', import.meta.url), 'utf8'), all, 'public/setup-all.sql matches: run npm run setup-sql');
+
 const db = new PGlite();
 await db.exec(all);
 await db.exec(`insert into tires (tire_size, section_width, aspect_ratio, rim_diameter, condition, qty, source) values ('225/65R17',225,65,17,'new',4,'x')`);
@@ -23,6 +25,6 @@ for (const t of ['vehicle_models', 'vehicle_fitment', 'wheelsize_usage', 'fitmen
 // The exact error from a Supabase project with no tables yet.
 const raw = { code: 'PGRST205', message: "Could not find the table 'public.tires' in the schema cache" };
 assert.ok(isMissingTable(raw));
-assert.match(explainDbError(raw), /setup-all\.sql/);
+assert.match(explainDbError(raw), /\/setup/);
 assert.equal(explainDbError({ code: '23505', message: 'duplicate key' }), 'duplicate key');
 console.log('SETUP SQL TEST PASSED');

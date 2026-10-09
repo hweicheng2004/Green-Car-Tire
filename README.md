@@ -19,6 +19,17 @@ The counter never calls Wheel-Size on its own: nothing is spent while someone is
 A confirmed lookup must name an exact model from the vehicle list, so the URL can't be used to spend lookups on
 arbitrary vehicles. `GET /api/fitment` (not used by the counter) still looks up directly, for scripts.
 
+## First use (`/setup`)
+
+Once demo mode is off (Supabase connected, `DEMO_MODE` removed or `0`), the counter sends you to `/setup` until stock is loaded:
+
+1. **Database connected**: `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in Vercel.
+2. **Tables**: Copy setup SQL (the same as `supabase/setup-all.sql`), paste it in Supabase > SQL Editor, Run, then Check again.
+3. **Tires** and 4. **Wheels**: choose a CSV or Excel file. The server cleans it with the same cleaner as the Sheets sync, shows what will load and which rows won't, then loads it in one go (replacing that table). No SQL to copy.
+5. **Optional**: Google Sheets sync, Wheel-Size key, Claude key, admin password.
+
+To try it with made-up stock, download `/samples/demo-tires.csv` and `/samples/demo-wheels.csv` from the site (links on `/setup`). They include a few bad rows on purpose. Set `ADMIN_PASSWORD` before the site is public: loading stock asks for it.
+
 ## Demo (no accounts)
 
 Deploy to Vercel with no environment variables, or run `npm run dev` locally without a `.env.local`. With no `SUPABASE_URL` the app runs in demo mode:
@@ -87,6 +98,8 @@ The counter finds 225, 65 and 17 in the address and swaps in each size (`compone
 | `lib/vehicle-lookup.ts`, `lib/fitment-lookup.ts` | Shorthand → model, and the cached Wheel-Size lookup. Shared by the API routes and the counter. |
 | `components/import/ImportDashboard.tsx`, `app/import/page.tsx` | The `/import` page. |
 | `lib/claude-import.ts`, `app/api/import/claude/route.ts` | Claude reads the rows the rules couldn't: prompt, output schema, validation, batching. |
+| `app/setup/page.tsx`, `components/setup/SetupWizard.tsx`, `lib/setup.ts`, `app/api/setup/*` | First-use setup: status checks, loading a spreadsheet straight into Supabase. |
+| `public/samples/` | Demo CSVs for testing live mode (built by `demo/build-demo-sheet.py`). |
 | `importer/` | The Sheet → SQL page. `node scripts/build-importer.mjs` rebuilds `importer/dist/sheet-import.html` after cleaner changes. |
 | `supabase/migrations/003_inventory.sql` | `tires`, `wheels`, `shop_settings` tables. |
 | `scripts/seed-models.ts` | Loads all Canadian and US makes and models for the counter search. |

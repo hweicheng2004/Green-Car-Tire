@@ -1,4 +1,4 @@
-// Writes supabase/setup-all.sql: migrations 001..N in order, for a single paste into the Supabase SQL editor.
+// Writes supabase/setup-all.sql (and the same file to public/ for /setup): migrations 001..N in order, for a single paste into the Supabase SQL editor.
 // Run: npm run setup-sql
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 
@@ -12,4 +12,5 @@ const out = [
   '',
 ].join('\n');
 writeFileSync('supabase/setup-all.sql', out);
+writeFileSync('public/setup-all.sql', out);   // served at /setup-all.sql for the Copy button on /setup
 console.log(`supabase/setup-all.sql  ${files.length} migrations, ${out.split('\n').length} lines`);

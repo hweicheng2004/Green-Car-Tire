@@ -1,0 +1,23 @@
+Size,Brand,Model,Type,N/U,Tread,Load/Speed,DOT,Qty,Price,Location,Notes
+225/65R17,Michelin,X-Ice Snow SUV,Winter,N,,102T,2525,8,229,Rack B-04
+225/65R17,Bridgestone,Blizzak DM-V2,Winter,N,,102S,1825,4,214,Rack B-05
+225/65R17,Michelin,CrossClimate2 SUV,All weather,N,,102H,3124,4,259,Rack B-06
+225/65R17,Continental,CrossContact LX25,All season,U,7/32,102H,2022,4,75,Used U-11,light plug in one
+225/60R18,Nokian,Hakkapeliitta R5 SUV,Winter,N,,104R XL,2025,4,279,Rack C-02
+225/60R18,Toyo,Celsius II,All weather,N,,100H,0825,4,219,Rack C-03
+235/65R17,Michelin,Defender LTX M/S2,All season,N,,104T,2024,0,262,Rack C-06,on order
+235/65R17,General,Altimax Arctic 12,Winter,N,,108T XL,3625,4,189,Rack C-07
+225/65R17,General,Altimax Arctic 12,Winter,U,8/32,102T,4721,2,65,Used U-12
+205/55R16,Pirelli,Ice Zero FR,Winter,N,,91T,0525,8,159,Rack A-05
+205/55R16,Bridgestone,Turanza QuietTrack,All season,U,4/32,91V,1519,2,45,Used U-01,sell cheap
+215/55R16,Toyo,Observe GSi-6,Winter,U,9/32,97H XL,2224,4,140,Used U-07,off a 2023 Civic
+215/50R17,Michelin,X-Ice Snow,Winter,N,,95H XL,2925,4,209,Rack A-09
+235/40R18,Continental,VikingContact 7,Winter,N,,95T XL,1125,4,239,Rack A-12
+195/65R15,Firestone,WinterForce 2,Winter,N,,91S,3324,8,119,Rack A-02
+265/70R17,Goodyear,Wrangler Workhorse AT,All season,N,,115T,2024,4,269,Yard 1
+275/65R18,BFGoodrich,All-Terrain T/A KO2,All season,N,,123/120S,1925,5,389.99,Yard 1
+LT245/75R16,Cooper,Discoverer AT3 LT,All season,N,,120/116S,0725,4,279,Yard 2
+275/60R20,Michelin,LTX Winter,Winter,N,,115T,3925,4,349,Yard 3
+225 65 17,Nokian,One,all-season,new,,102H,2325,4,"$1,036/set",Rack B-08,"typed with spaces, set price"
+31x10.50R15,BFGoodrich,Mud-Terrain KM3,MT,N,,109Q,2024,4,420,Yard 2,flotation size: not synced
+265/70R17,Falken,Wildpeak AT3W,All terrain,N,,115T,2025,four,289,Yard 1,qty typed as a word: not synced

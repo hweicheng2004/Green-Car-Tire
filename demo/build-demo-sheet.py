@@ -2,8 +2,10 @@
 # The JSON is the one source: demo mode (lib/demo.ts) reads it too, so the app's demo and the uploaded sheet match.
 # Upload the .xlsx to Google Drive (it converts to a Google Sheet), share it with the service account, set GOOGLE_SHEET_ID.
 # Mostly clean rows, plus a few deliberately messy ones so the "Sync issues" tab has something to show.
+# Also writes public/samples/demo-tires.csv and demo-wheels.csv: the same stock as CSV files to test /setup and /import
+# with in live mode (downloadable from the site).
 # Run: python3 demo/build-demo-sheet.py
-import json
+import csv, json
 from pathlib import Path
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
@@ -40,3 +42,11 @@ for tab, rows in book.items():
 out = here / 'demo-inventory.xlsx'
 wb.save(out)
 print(out, out.stat().st_size, 'bytes')
+
+samples = here.parent / 'public' / 'samples'
+samples.mkdir(parents=True, exist_ok=True)
+for tab, rows in book.items():
+    path = samples / f'demo-{tab.lower()}.csv'
+    with open(path, 'w', newline='') as f:
+        csv.writer(f).writerows(rows[1:])   # header row first, like a sheet export; title row dropped
+    print(path, len(rows) - 2, 'rows')

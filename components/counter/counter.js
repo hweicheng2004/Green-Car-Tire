@@ -816,7 +816,7 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   }
 
   // header and examples
-  $('status').innerHTML = `<span class="dot${data.mode === 'live' ? ' live' : ''}"></span>${esc(data.status)} · <a href="/sync">sync</a> · <a href="/import">import</a>`;
+  $('status').innerHTML = `<span class="dot${data.mode === 'live' ? ' live' : ''}"></span>${esc(data.status)} · <a href="/sync">sync</a> · <a href="/import">import</a> · <a href="/setup">setup</a>`;
   $('triesV').innerHTML = 'Try: ' + data.tries.vehicles.map(v => `<button data-y="${v.year}" data-mk="${esc(v.make)}" data-md="${esc(v.model)}">${esc(v.label)}</button>`).join('');
   $('triesS').innerHTML = 'Try: ' + data.tries.sizes.map(s => `<button data-s="${esc(s)}">${esc(s)}</button>`).join('');
 

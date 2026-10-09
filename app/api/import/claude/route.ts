@@ -3,18 +3,12 @@
 // Needs ANTHROPIC_API_KEY. If ADMIN_PASSWORD is set, the request must carry it (x-admin-password), so a public URL
 // can't run up the Anthropic bill.
 import { NextResponse } from 'next/server';
-import { timingSafeEqual } from 'node:crypto';
 import { cleanWithClaude, MAX_ROWS } from '@/lib/claude-import';
+import { passwordOk } from '@/lib/admin-password';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
-const passwordOk = (req: Request) => {
-  const want = process.env.ADMIN_PASSWORD;
-  if (!want) return true;
-  const got = Buffer.from(req.headers.get('x-admin-password') ?? ''), exp = Buffer.from(want);
-  return got.length === exp.length && timingSafeEqual(got, exp);
-};
 
 export async function POST(req: Request) {
   if (!passwordOk(req)) return NextResponse.json({ error: 'password', message: 'Enter the admin password.' }, { status: 401 });

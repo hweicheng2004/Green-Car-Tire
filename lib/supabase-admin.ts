@@ -7,5 +7,9 @@ export const supabaseAdmin = (): SupabaseClient => {
   if (client) return client;
   const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set.');
-  return (client = createClient(url, key, { auth: { persistSession: false } }));
+  return (client = createClient(url, key, {
+    auth: { persistSession: false },
+    // Never let Next.js cache a database read on the server: stock, sync status and setup counts must always be current.
+    global: { fetch: (input, init) => fetch(input, { ...init, cache: 'no-store' }) },
+  }));
 };
