@@ -8,12 +8,16 @@ export const COUNTER_MARKUP = `  <header class="bar">
     <div class="omnis">
       <div class="field">
         <label for="qv" class="flabel">Year · make · model</label>
-        <div class="omni">
+        <div class="omni veh3">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 17h14M6 17l1.5-5h9L18 17M7.5 12 9 8h6l1.5 4"/><circle cx="8" cy="17" r="1.6"/><circle cx="16" cy="17" r="1.6"/></svg>
-          <input id="qv" autocomplete="off" spellcheck="false" placeholder="18 outback">
+          <input id="qv" class="vy" autocomplete="off" spellcheck="false" inputmode="numeric" maxlength="4" placeholder="Year" aria-label="Year">
+          <input id="qmk" class="vmk" autocomplete="off" spellcheck="false" placeholder="Make" aria-label="Make" list="dlMake">
+          <input id="qmd" class="vmd" autocomplete="off" spellcheck="false" placeholder="Model" aria-label="Model" list="dlModel">
           <span class="parse none" id="parseV">—</span>
           <kbd>V</kbd>
         </div>
+        <datalist id="dlMake"></datalist><datalist id="dlModel"></datalist>
+        <div class="lookup-pop" id="lookupPop" role="dialog" aria-live="polite" hidden></div>
         <div class="tries" id="triesV"></div>
       </div>
       <div class="field">

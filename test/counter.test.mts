@@ -1,7 +1,8 @@
 // Counter data: demo mode (no accounts) and the mappers live mode uses.
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
-import { isDemo, demoVehicle, demoOeOn, demoInventory, demoIssueSheet } from '../lib/demo';
+import { isDemo, demoVehicle, demoOeOn, demoInventory, demoIssueSheet, demoCatalog } from '../lib/demo';
+import { parseYear } from '../lib/vehicle-query';
 import { fitmentToCounter, feesFromSettings, toCounterWheel, DEFAULT_FEES } from '../lib/counter-data';
 import { normalize } from '../lib/fitment';
 import type { WsModification } from '../lib/wheelsize';
@@ -12,18 +13,33 @@ assert.equal(isDemo({ SUPABASE_URL: 'https://x.supabase.co' }), false);
 assert.equal(isDemo({ SUPABASE_URL: 'https://x.supabase.co', DEMO_MODE: '1' }), true, 'forced on');
 assert.equal(isDemo({ DEMO_MODE: '0' }), false, 'forced off');
 
-// ---- demo vehicles: same shorthand the counter accepts
-const veh = (q: string) => { const r = demoVehicle(q); assert.ok('vehicle' in r, q); return r.vehicle; };
-assert.deepEqual([veh('18 outback').year, veh('18 outback').gen, veh('18 outback').oe[0][0]], [2018, '2015–2019', '225/65R17']);
-assert.equal(veh('2019 honda civic').model, 'Civic');
-assert.equal(veh('20 crv').model, 'CR-V');
-assert.equal(veh('17 f150').bolt, '6×135');
-assert.equal(veh('f150 17').year, 2017);
-assert.deepEqual([veh('outback').year, veh('outback').assumed], [2024, true], 'no year: latest generation');
-const miss = demoVehicle('2009 civic'); assert.ok('miss' in miss && miss.miss.label === 'Honda Civic');
-assert.ok('none' in demoVehicle('zzz')); assert.ok('none' in demoVehicle(''));
+// ---- demo vehicles: the three boxes (year, make, model), names or slugs
+const ask = (year: number | null, make: string, model: string) => ({ year, make, model });
+const veh = (y: number | null, mk: string, md: string) => { const r = demoVehicle(ask(y, mk, md)); assert.ok('vehicle' in r, `${y} ${mk} ${md}`); return r.vehicle; };
+assert.deepEqual([veh(2018, 'Subaru', 'Outback').year, veh(2018, 'subaru', 'outback').gen, veh(2018, 'Subaru', 'Outback').oe[0][0]], [2018, '2015–2019', '225/65R17']);
+assert.equal(veh(2019, 'Honda', 'Civic').model, 'Civic');
+assert.equal(veh(2020, 'honda', 'crv').model, 'CR-V', 'CR-V typed without the dash');
+assert.equal(veh(2017, 'Ford', 'F150').bolt, '6×135');
+assert.ok('miss' in demoVehicle(ask(null, 'Subaru', 'Outback')), 'no year: asks for it');
+const miss = demoVehicle(ask(2009, 'Honda', 'Civic')); assert.ok('miss' in miss && miss.miss.label === 'Honda Civic');
+assert.ok('none' in demoVehicle(ask(2018, 'Zzz', 'outback'))); assert.ok('none' in demoVehicle(ask(2018, '', '')));
+assert.ok('none' in demoVehicle(ask(2018, 'Toyota', 'Outback')), 'model must belong to the make');
+
+// Not saved yet: ask first, look up only when confirmed, then it's saved.
+const ask1 = demoVehicle(ask(2019, 'Mazda', 'CX-5'));
+assert.ok('needsLookup' in ask1, 'unsaved vehicle prompts instead of looking up');
+assert.deepEqual([ask1.needsLookup.label, ask1.needsLookup.hitsNeeded, ask1.needsLookup.hitsToday], ['Mazda CX-5', 2, 0]);
+assert.ok('needsLookup' in demoVehicle(ask(2019, 'Mazda', 'CX-5')), 'asking again still costs nothing');
+const got = demoVehicle(ask(2019, 'mazda', 'cx-5'), true);
+assert.ok('vehicle' in got && got.vehicle.model === 'CX-5', 'confirmed lookup returns the vehicle');
+assert.ok('vehicle' in demoVehicle(ask(2021, 'Mazda', 'CX-5')), 'saved now, no prompt');
+const esc = demoVehicle(ask(2022, 'Ford', 'Escape'));
+assert.ok('needsLookup' in esc && esc.needsLookup.hitsToday === 2, 'quota shown counts earlier lookups');
+
 assert.deepEqual(demoOeOn('225/65R17').map(v => v.label).slice(0, 2), ['2015–2019 Subaru Outback', '2020–2024 Subaru Outback']);
-assert.ok(demoOeOn('225/65R17').every(v => 'vehicle' in demoVehicle(v.q)), '"OE on" buttons search a vehicle that resolves');
+assert.ok(demoOeOn('225/65R17').every(v => !('none' in demoVehicle(ask(v.year, v.make, v.model)))), '"OE on" buttons fill boxes that resolve');
+const cat = demoCatalog();
+assert.deepEqual(cat.find(m => m.slug === 'honda')!.models.map(m => m.name).sort(), ['CR-V', 'Civic']);
 
 // ---- demo inventory = the demo sheet through the real cleaner
 const inv = demoInventory();
@@ -38,7 +54,7 @@ assert.deepEqual([usedTire.used, usedTire.tread], [true, 7]);
 const dual = inv.wheels.find(w => w.pcds.length === 2)!;
 assert.deepEqual(dual.pcds, ['5×100', '5×114.3'], 'dual-drilled wheel matches both, in the × format fitment uses');
 assert.equal(new Set(inv.tires.map(t => t.id)).size, inv.tires.length, 'unique ids');
-for (const v of [...inv.tries.vehicles]) assert.ok('vehicle' in demoVehicle(v), `Try button "${v}" resolves`);
+for (const v of inv.tries.vehicles) assert.ok('vehicle' in demoVehicle(ask(v.year, v.make, v.model)), `Try button "${v.label}" resolves`);
 const { sheet } = demoIssueSheet();
 assert.deepEqual(sheet.filter(r => r[2] === 'Not synced').map(r => r[1]), ['23', '24', '14']);
 
@@ -84,3 +100,42 @@ assert.equal(feesFromSettings([], { TIRECONNECT_URL: 'https://a.tireconnect.ca/'
 assert.equal(feesFromSettings([{ key: 'tireconnect', value: { url: 'https://b.tireconnect.ca/' } }], { TIRECONNECT_URL: 'https://a.tireconnect.ca/' }).tc, 'https://b.tireconnect.ca/', 'shop setting wins over env');
 assert.equal(feesFromSettings([{ key: 'tireconnect', value: { url: 'javascript:alert(1)' } }], {}).tc, '', 'only web addresses');
 console.log('ORDER LINK TEST PASSED');
+
+// ---- year box
+const yNow = new Date().getFullYear();
+assert.deepEqual(['18', '2018', '99', '1999', '201', '', 'abc', String(yNow + 5)].map(parseYear), [2018, 2018, 1999, 1999, null, null, null, null]);
+
+// ---- live: the counter never calls Wheel-Size unless the lookup is confirmed
+const { liveVehicle } = await import('../lib/counter-live');
+const models = [{ make_slug: 'mazda', make_name: 'Mazda', model_slug: 'cx-5', model_name: 'CX-5', model_compact: 'cx5' },
+  { make_slug: 'mazda', make_name: 'Mazda', model_slug: 'cx-50', model_name: 'CX-50', model_compact: 'cx50' }];
+let wsCalls = 0, saved: unknown = null;
+const q = (table: string) => {
+  const f: Record<string, unknown> = {};
+  const chain: any = {
+    select: () => chain, in: () => chain, order: () => chain, limit: () => chain,
+    eq: (k: string, v: unknown) => { f[k] = v; return chain; }, like: (k: string, v: string) => { f[k] = v; return chain; },
+    match: (m: Record<string, unknown>) => { Object.assign(f, m); return chain; },
+    maybeSingle: async () => ({ data: table === 'vehicle_fitment' ? saved : table === 'wheelsize_usage' ? { hits: 40 } : null, error: null }),
+    upsert: async (row: unknown) => { saved = { data: (row as any).data, lug_seat: null, fetched_at: new Date().toISOString() }; return { error: null }; },
+    then: (res: (v: unknown) => unknown) => res({ data: table === 'vehicle_models'
+      ? models.filter(m => m.make_slug === f.make_compact && m.model_compact.startsWith(String(f.model_compact).replace('%', ''))) : [], error: null }),
+  };
+  return chain;
+};
+const fakeDb: any = { from: q, rpc: async (fn: string) => { if (fn === 'wheelsize_hit') wsCalls++; return { data: 1, error: null }; } };
+const prevFetch = globalThis.fetch;
+globalThis.fetch = (async () => new Response(JSON.stringify({ data: JSON.parse(readFileSync(new URL('./fixture-outback-2018.json', import.meta.url), 'utf8')).usdm }))) as any;
+process.env.WHEELSIZE_API_KEY = 'test';
+const l1 = await liveVehicle(fakeDb, { year: 2019, make: 'Mazda', model: 'cx' });
+assert.ok('needsLookup' in l1, 'unsaved: prompt');
+assert.equal(wsCalls, 0, 'no Wheel-Size call without confirmation');
+assert.deepEqual([l1.needsLookup.label, l1.needsLookup.options.map(o => o.label), l1.needsLookup.hitsToday], ['Mazda CX-5', ['Mazda CX-5', 'Mazda CX-50'], 40]);
+assert.ok('none' in await liveVehicle(fakeDb, { year: 2019, make: 'Mazda', model: 'cx' }, true), 'confirm needs an exact model');
+assert.equal(wsCalls, 0);
+const l2 = await liveVehicle(fakeDb, { year: 2019, make: 'mazda', model: 'cx-5' }, true);
+assert.ok('vehicle' in l2 && l2.vehicle.source === 'api'); assert.equal(wsCalls, 2, 'confirmed: one hit per market');
+const l3 = await liveVehicle(fakeDb, { year: 2019, make: 'Mazda', model: 'CX-5' });
+assert.ok('vehicle' in l3 && l3.vehicle.source === 'cache'); assert.equal(wsCalls, 2, 'saved now: free');
+globalThis.fetch = prevFetch;
+console.log('VEHICLE LOOKUP TEST PASSED');

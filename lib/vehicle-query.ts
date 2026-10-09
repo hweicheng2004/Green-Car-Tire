@@ -18,3 +18,12 @@ export function parseVehicleQuery(q: string): VehicleQuery | null {
 }
 
 export const compact = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/** "18" -> 2018, "99" -> 1999, "2018" -> 2018. null if it isn't a plausible model year. */
+export function parseYear(v: string | number | null | undefined): number | null {
+  const t = String(v ?? '').trim();
+  if (!/^\d{2}$|^\d{4}$/.test(t)) return null;
+  let y = Number(t);
+  if (y < 100) y = y <= (thisYear() % 100) + 1 ? 2000 + y : 1900 + y;
+  return y >= 1950 && y <= thisYear() + 2 ? y : null;
+}

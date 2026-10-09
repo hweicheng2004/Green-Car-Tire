@@ -37,3 +37,31 @@ export async function findModels(db: SupabaseClient, q: string): Promise<{ year:
     .map(({ model_compact, ...m }) => m).slice(0, 12);
   return { year: parsed.year, matches };
 }
+
+/** Separate make and model boxes: "Land Rover" + "range rover sport", or slugs. Exact model first, then shortest. */
+export async function findModelsBy(db: SupabaseClient, make: string, model: string): Promise<ModelMatch[]> {
+  const mk = compact(make), md = compact(model);
+  if (!mk || !md) return [];
+  const { data, error } = await db.from('vehicle_models')
+    .select('make_slug, make_name, model_slug, model_name, model_compact')
+    .in('region', regions()).eq('make_compact', mk).like('model_compact', `${md}%`).limit(24);
+  if (error) throw new Error(error.message);
+  const uniq = [...new Map((data ?? []).map(m => [`${m.make_slug}/${m.model_slug}`, m])).values()];
+  return uniq.sort((a, b) => Number(b.model_compact === md) - Number(a.model_compact === md) || a.model_compact.length - b.model_compact.length)
+    .map(({ model_compact, ...m }) => m).slice(0, 8);
+}
+
+export type Catalog = { slug: string; name: string; models: { slug: string; name: string }[] }[];
+
+/** Every make and its models, for the counter's make/model suggestions. One query; cached at the edge. */
+export async function modelCatalog(db: SupabaseClient): Promise<Catalog> {
+  const { data, error } = await db.from('vehicle_models').select('make_slug, make_name, model_slug, model_name')
+    .in('region', regions()).order('make_name').order('model_name').limit(20000);
+  if (error) throw new Error(error.message);
+  const makes = new Map<string, Catalog[number]>();
+  for (const r of data ?? []) {
+    const m = makes.get(r.make_slug) ?? makes.set(r.make_slug, { slug: r.make_slug, name: r.make_name, models: [] }).get(r.make_slug)!;
+    if (!m.models.some(x => x.slug === r.model_slug)) m.models.push({ slug: r.model_slug, name: r.model_name });
+  }
+  return [...makes.values()];
+}

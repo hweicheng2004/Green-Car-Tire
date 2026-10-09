@@ -5,8 +5,9 @@
 import demoBook from '../demo/demo-inventory.json';
 import { cleanTab, planKind, issueSheet, type KindPlan, type TabResult } from './inventory-sync';
 import type { TireRow, WheelRow } from './inventory-clean';
-import { compact, parseVehicleQuery } from './vehicle-query';
-import { toCounterTire, toCounterWheel, feesFromSettings, type CounterInventory, type CounterVehicle, type CounterOe, type VehicleResult } from './counter-data';
+import { compact } from './vehicle-query';
+import type { Catalog } from './vehicle-lookup';
+import { toCounterTire, toCounterWheel, feesFromSettings, TRIES, type VehicleAsk, type CounterInventory, type CounterVehicle, type CounterOe, type VehicleResult } from './counter-data';
 
 export const isDemo = (env: Record<string, string | undefined> = process.env) =>
   env.DEMO_MODE === '1' || env.DEMO_MODE === 'true' || (!env.SUPABASE_URL && env.DEMO_MODE !== '0');
@@ -37,29 +38,41 @@ const toCounter = (d: DemoVeh, year: number, assumed: boolean): CounterVehicle =
   gen: `${d.from}–${d.to}`, bolt: d.bolt, cb: d.cb, lug: d.lug, seat: d.seat, tq: d.tq, oe: d.oe, mixed: [], source: 'demo',
 });
 
-/** "18 outback", "2019 honda civic", "f150 17", "crv". Same parser as live mode, sample vehicles instead of Wheel-Size. */
-export function demoVehicle(q: string): VehicleResult {
-  const p = parseVehicleQuery(q);
-  if (!p) return { none: true };
-  const makes = new Set(DEMO_VEHICLES.map(d => d.makeSlug));
-  const words = p.text.split(' ');
-  const text = compact(p.makeHint && makes.has(compact(p.makeHint)) ? words.slice(1).join(' ') : p.text);
-  if (text.length < 2) return { none: true };
-  const cands = DEMO_VEHICLES.filter(d => compact(d.modelSlug).startsWith(text) || text.startsWith(compact(d.modelSlug)));
-  if (!cands.length) return { none: true };
-  if (p.year === null) {
-    const latest = cands.reduce((a, b) => (b.to > a.to ? b : a));
-    return { vehicle: toCounter(latest, latest.to, true) };
+// To show the "look it up?" popup without accounts, these demo vehicles start as not saved. Confirming a lookup
+// "saves" them for this server instance, like a real Wheel-Size lookup saves to Supabase.
+const NOT_SAVED = new Set(['mazda/cx-5', 'ford/escape']);
+let demoHits = 0;
+
+/** Year + make + model from the three counter boxes, against the sample vehicles. Same rules as live mode. */
+export function demoVehicle(ask: VehicleAsk, lookup = false): VehicleResult {
+  const mk = compact(ask.make), md = compact(ask.model);
+  if (!mk || !md) return { none: true };
+  const cands = DEMO_VEHICLES.filter(d => compact(d.makeSlug) === mk && compact(d.modelSlug).startsWith(md))
+    .sort((a, b) => Number(compact(b.modelSlug) === md) - Number(compact(a.modelSlug) === md));
+  const pick = lookup ? cands.filter(d => compact(d.modelSlug) === md) : cands.filter(d => d.modelSlug === cands[0]?.modelSlug);
+  if (!pick.length) return { none: true };
+  const first = pick[0], key = `${first.makeSlug}/${first.modelSlug}`, label = `${first.make} ${first.model}`;
+  if (ask.year === null) return { miss: { year: null, label, why: 'Add the year to look up fitment.' } };
+  if (NOT_SAVED.has(key)) {
+    if (!lookup) {
+      const opts = [...new Map(cands.map(d => [`${d.makeSlug}/${d.modelSlug}`, { makeSlug: d.makeSlug, modelSlug: d.modelSlug, label: `${d.make} ${d.model}` }])).values()];
+      return { needsLookup: { year: ask.year, makeSlug: first.makeSlug, modelSlug: first.modelSlug, label, options: opts, hitsNeeded: 2, hitsToday: demoHits, dailyLimit: 300 } };
+    }
+    NOT_SAVED.delete(key); demoHits += 2;
   }
-  const hit = cands.find(d => p.year! >= d.from && p.year! <= d.to);
-  return hit ? { vehicle: toCounter(hit, p.year, false) }
-    : { miss: { year: p.year, label: `${cands[0].make} ${cands[0].model}`, why: 'The demo only has sample fitment for a few model years.' } };
+  const hit = pick.find(d => ask.year! >= d.from && ask.year! <= d.to);
+  return hit ? { vehicle: toCounter(hit, ask.year, false) }
+    : { miss: { year: ask.year, label, why: 'The demo only has sample fitment for a few model years.' } };
 }
+
+/** Every demo make and model, for the make/model suggestions. */
+export const demoCatalog = (): Catalog => [...new Map(DEMO_VEHICLES.map(d => [d.makeSlug, { slug: d.makeSlug, name: d.make, models: [] as { slug: string; name: string }[] }])).values()]
+  .map(m => ({ ...m, models: [...new Map(DEMO_VEHICLES.filter(d => d.makeSlug === m.slug).map(d => [d.modelSlug, { slug: d.modelSlug, name: d.model }])).values()] }));
 
 /** Vehicles that came on a size, for the size search's "OE on" list. */
 export function demoOeOn(size: string) {
   return DEMO_VEHICLES.filter(d => d.oe.some(o => o[0] === size))
-    .map(d => ({ label: `${d.from}–${d.to} ${d.make} ${d.model}`, q: `${d.to} ${compact(d.modelSlug)}` }));
+    .map(d => ({ label: `${d.from}–${d.to} ${d.make} ${d.model}`, year: d.to, make: d.makeSlug, model: d.modelSlug }));
 }
 
 // ---------------------------------------------------------------- inventory and sync preview
@@ -90,6 +103,6 @@ export function demoInventory(): CounterInventory {
     tires: plans[0].rows.map((r, i) => toCounterTire(r as TireRow, i)),
     wheels: plans[1].rows.map((r, i) => toCounterWheel(r as WheelRow, i)),
     fees: feesFromSettings([]),
-    tries: { vehicles: ['18 outback', '20 crv', '2019 honda civic', '17 f150'], sizes: ['225 65 17', '2056016', '265/70R17'] },
+    tries: { vehicles: TRIES, sizes: ['225 65 17', '2056016', '265/70R17'] },
   };
 }

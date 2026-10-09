@@ -225,3 +225,27 @@ details.fees summary{cursor:pointer;font:600 11px var(--body);text-transform:upp
 .imp-raw{font-size:12px;color:var(--muted);font-family:var(--mono)}
 tr.imp-bad td{background:var(--bad-soft)}
 @media (max-width:1100px){.imp-grid{grid-template-columns:minmax(0,1fr)}}
+
+/* three vehicle boxes in one omnibox, and the Wheel-Size confirm popup under them */
+.omni.veh3{gap:0}
+.omni.veh3 svg{margin-right:12px}
+.omni.veh3 input{flex:1 1 0;min-width:0;padding:0 10px;border-left:1px solid var(--line);height:60%}
+.omni.veh3 input.vy{flex:0 0 3.4em;border-left:0;padding-left:0}
+.omni.veh3 input.vmd{flex:1.4 1 0}
+.omni.veh3 .parse{margin-left:10px}
+.field{position:relative}
+.lookup-pop{position:absolute;z-index:20;left:0;right:0;top:calc(100% - 26px);background:var(--panel);border:2px solid var(--accent);border-radius:10px;
+  box-shadow:0 12px 32px rgba(0,0,0,.18);padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.lookup-pop h3{margin:0;font:700 22px/1.1 var(--display);text-transform:uppercase}
+.lookup-pop p{margin:0;font-size:13px;color:var(--muted)}
+.lookup-pop .opts{display:flex;gap:6px;flex-wrap:wrap}
+.lookup-pop .opts button{font:600 13px var(--body);border:1px solid var(--line);background:var(--panel-2);border-radius:6px;padding:5px 10px;cursor:pointer;color:var(--ink)}
+.lookup-pop .opts button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.lookup-pop .acts{display:flex;gap:8px}
+.lookup-pop .acts button{font:700 15px var(--display);text-transform:uppercase;letter-spacing:.05em;border-radius:8px;padding:9px 14px;cursor:pointer;border:1px solid var(--line);background:var(--panel);color:var(--ink);display:inline-flex;gap:8px;align-items:center}
+.lookup-pop .acts .go{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);flex:1;justify-content:center}
+.lookup-pop .acts kbd{background:transparent;color:inherit;border-color:currentColor;opacity:.7}
+@media (max-width:760px){.omni.veh3 input{font-size:16px}.omni.veh3 input.vy{flex-basis:3.8em}}
+.lookup-pop[hidden]{display:none}
+.omni.veh3 .parse{max-width:34%;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto}
+@media (max-width:760px){.omni.veh3 .parse,.omni.veh3 kbd,.omni.veh3 svg{display:none}.omni.veh3 input.vy{padding-left:4px}}

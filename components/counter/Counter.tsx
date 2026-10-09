@@ -4,7 +4,8 @@ import { useEffect } from 'react';
 import { COUNTER_MARKUP } from './markup';
 import { startCounter } from './counter.js';
 import { logSearch, flushSearch } from '@/lib/log-search-client';
-import type { CounterInventory, VehicleResult } from '@/lib/counter-data';
+import type { CounterInventory, VehicleResult, VehicleAsk } from '@/lib/counter-data';
+import type { Catalog } from '@/lib/vehicle-lookup';
 import type { CounterSearch } from '@/lib/search-log';
 
 const getJson = async <T,>(url: string): Promise<T> => {
@@ -21,8 +22,10 @@ export default function Counter({ data, error }: { data?: CounterInventory; erro
     return startCounter({
       data,
       api: {
-        vehicle: (q: string) => getJson<VehicleResult>(`/api/counter/vehicle?q=${encodeURIComponent(q)}`),
-        oeOn: (size: string) => getJson<{ vehicles: { label: string; q: string }[] }>(`/api/counter/size?size=${encodeURIComponent(size)}`).then(r => r.vehicles),
+        vehicle: (ask: VehicleAsk, lookup = false) => getJson<VehicleResult>(`/api/counter/vehicle?${new URLSearchParams({
+          year: String(ask.year ?? ''), make: ask.make, model: ask.model, ...(lookup ? { lookup: '1' } : {}) })}`),
+        catalog: () => getJson<{ makes: Catalog }>('/api/counter/catalog').then(r => r.makes),
+        oeOn: (size: string) => getJson<{ vehicles: { label: string; year: number; make: string; model: string }[] }>(`/api/counter/size?size=${encodeURIComponent(size)}`).then(r => r.vehicles),
       },
       // Demo mode has no database, so searches aren't saved.
       log: live ? (s: CounterSearch) => logSearch(s) : () => {},

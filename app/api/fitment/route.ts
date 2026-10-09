@@ -14,5 +14,6 @@ export async function GET(req: Request) {
   }
   const r = await getFitment(supabaseAdmin(), make, model, year, refresh);
   if ('error' in r) return NextResponse.json({ error: r.error }, { status: r.status });
+  if ('notCached' in r) return NextResponse.json({ error: 'not cached' }, { status: 404 });
   return NextResponse.json(r.fit, { headers: { 'x-fitment-cache': r.cache } });
 }

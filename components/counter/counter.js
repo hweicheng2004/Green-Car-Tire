@@ -6,6 +6,7 @@
 // Returns a cleanup function that removes every listener (React runs effects twice in development).
 
 import { exampleToTemplate, fillTemplate, hasSlots, isHttpUrl } from './order-link';
+import { parseYear, compact } from '../../lib/vehicle-query';
 
 const SIZE_RE = /^\s*(?:P|LT)?\s*(\d{3})\s*[\/\s\-]*\s*(\d{2})\s*[\sRZ\/\-]*\s*(\d{2})\s*$/i;
 export function parseSize(s) {
@@ -24,7 +25,7 @@ const SEAT = { conical: 'conical (60°)', ball: 'ball (radius)', flat: 'flat (ma
 const sgn = n => (n > 0 ? '+' : n < 0 ? '−' : '±') + Math.abs(n);
 const q2 = v => (v == null ? '?' : v);
 
-/** @param {{ data: any, api: { vehicle: (q: string) => Promise<any>, oeOn: (size: string) => Promise<any[]> }, log?: (s: any) => void, flush?: () => void }} opts */
+/** @param {{ data: any, api: { vehicle: (ask: any, lookup?: boolean) => Promise<any>, catalog: () => Promise<any[]>, oeOn: (size: string) => Promise<any[]> }, log?: (s: any) => void, flush?: () => void }} opts */
 export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   const ac = new AbortController();
   const on = (t, ev, fn) => t.addEventListener(ev, fn, { signal: ac.signal });
@@ -149,36 +150,83 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   }
 
   // ---------- Search ----------
+  // Vehicle: three boxes (year, make, model). A lookup fires only once all three are filled in and the model is a
+  // real one (picked from the list, or Enter takes the closest). Saved vehicles show instantly; an unsaved one opens
+  // the popup, and Wheel-Size is only called after someone confirms it.
   let lastBox = 'qv';
+  const VBOX = ['qv', 'qmk', 'qmd'];
+  const isVBox = id => VBOX.includes(id);
+  let catalog = [];          // [{ slug, name, models: [{ slug, name }] }]
+  let pending = null;        // the needsLookup prompt currently shown
+  let pendingPick = 0;
   function setActive(id) {
     lastBox = id;
-    $('qv').closest('.field').classList.toggle('active', id === 'qv');
+    $('qv').closest('.field').classList.toggle('active', isVBox(id));
     $('qs').closest('.field').classList.toggle('active', id === 'qs');
   }
-  function clearBox(id) { $(id).value = ''; const p = $(id === 'qv' ? 'parseV' : 'parseS'); p.className = 'parse none'; p.textContent = '—'; }
+  function clearBox(id) {
+    for (const x of isVBox(id) ? VBOX : [id]) $(x).value = '';
+    const p = $(isVBox(id) ? 'parseV' : 'parseS'); p.className = 'parse none'; p.textContent = '—';
+    if (isVBox(id)) hidePopup();
+  }
   function showNone(label) {
     Object.assign(st, { mode: 'none', veh: null, target: null, oe: null });
     const p = $('parseV'); p.className = 'parse none'; p.textContent = label;
     compute(); autoSelect(); render();
   }
-  function searchVehicle(q) {
-    setActive('qv'); clearBox('qs');
-    q = q.trim(); const seq = ++vseq; clearTimeout(vtimer);
-    st.query = q; st.lastKind = 'vehicle';
-    if (!q) return showNone('—');
-    if (parseSize(q)) return showNone('That’s a size →');
-    const key = q.toLowerCase().replace(/\s+/g, ' ');
+  const findMake = text => { const c = compact(text); return c ? catalog.find(m => compact(m.name) === c || compact(m.slug) === c) : null; };
+  const modelMatches = (mk, text) => {
+    const c = compact(text); if (!mk || !c) return [];
+    return mk.models.filter(m => compact(m.name).startsWith(c) || compact(m.slug).startsWith(c))
+      .sort((a, b) => Number(compact(b.name) === c || compact(b.slug) === c) - Number(compact(a.name) === c || compact(a.slug) === c) || a.name.length - b.name.length);
+  };
+  function fillModelList() {
+    const mk = findMake($('qmk').value);
+    $('dlModel').innerHTML = (mk ? mk.models : []).map(m => `<option value="${esc(m.name)}"></option>`).join('');
+  }
+  /** Reads the three boxes. `force` (Enter) completes a partial model to the closest match. */
+  function searchVehicle(force = false) {
+    setActive(lastBox && isVBox(lastBox) ? lastBox : 'qv'); clearBox('qs');
+    const seq = ++vseq; clearTimeout(vtimer); hidePopup();
+    const yText = $('qv').value.trim(), mText = $('qmk').value.trim(), mdText = $('qmd').value.trim();
+    const year = parseYear(yText);
+    st.query = [yText, mText, mdText].filter(Boolean).join(' '); st.lastKind = 'vehicle';
+    if (!yText && !mText && !mdText) return showNone('—');
+    if (parseSize(st.query)) return showNone('That’s a size →');
+    const mk = catalog.length ? findMake(mText) : null;
+    if (catalog.length && mText && !mk) return showNone(catalog.some(m => compact(m.name).startsWith(compact(mText))) ? 'Pick a make' : 'Unknown make');
+    if (!mdText) return showNone(mText ? 'Add the model' : 'Add the make');
+    let model = mdText;
+    if (mk) {
+      const ms = modelMatches(mk, mdText);
+      const exact = ms.find(m => compact(m.name) === compact(mdText) || compact(m.slug) === compact(mdText));
+      if (!ms.length) return showNone('Unknown model');
+      if (!exact && !force) return showNone(ms.length === 1 ? `↵ ${ms[0].name}` : 'Pick a model');
+      model = (exact || ms[0]).slug;
+      if (!exact) $('qmd').value = ms[0].name;
+    }
+    if (!yText) return showNone('Add the year');
+    if (year === null) return showNone('Year?');
+    const ask = { year, make: mk ? mk.slug : mText, model };
+    const key = `${ask.year}|${compact(ask.make)}|${compact(ask.model)}`;
     if (VEHCACHE.has(key)) return applyVehicle(VEHCACHE.get(key));
     const p = $('parseV'); p.className = 'parse none'; p.textContent = '…';
     vtimer = setTimeout(() => {
-      api.vehicle(q).then(r => {
-        if (!r.error) VEHCACHE.set(key, r);
+      api.vehicle(ask).then(r => {
+        if (r.vehicle || r.miss) VEHCACHE.set(key, r);   // "not saved yet" isn't cached: it changes once looked up
         if (seq === vseq) applyVehicle(r);
       }).catch(() => { if (seq === vseq) showNone('Lookup failed'); });
-    }, 250);
+    }, force ? 0 : 200);
   }
   function applyVehicle(r) {
     const p = $('parseV');
+    hidePopup();
+    if (r.needsLookup) {
+      Object.assign(st, { mode: 'lookup', veh: r.needsLookup, target: null, oe: null });
+      p.className = 'parse none'; p.textContent = 'Not saved yet';
+      compute(); autoSelect(); render(); showPopup(r.needsLookup);
+      return;   // logged once looked up, or not at all if cancelled
+    }
     if (r.vehicle && r.vehicle.oe.length) {
       const v = r.vehicle;
       Object.assign(st, { mode: 'vehicle', veh: { v, year: v.year, assumed: v.assumed }, oeIdx: 0 }); setOE(0, false);
@@ -192,6 +240,50 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
       p.className = 'parse none'; p.textContent = r.error ? 'Lookup failed' : 'No match';
     }
     compute(); autoSelect(); render(); logCurrent();
+  }
+  // ---------- Wheel-Size confirm popup ----------
+  function showPopup(n) {
+    pending = n; pendingPick = Math.max(0, n.options.findIndex(o => o.makeSlug === n.makeSlug && o.modelSlug === n.modelSlug));
+    renderPopup();
+  }
+  function renderPopup(busy = '') {
+    const el = $('lookupPop'), n = pending; if (!n) return;
+    const o = n.options[pendingPick] || { label: n.label };
+    const left = n.hitsToday == null ? '' : ` ${Math.max(0, n.dailyLimit - n.hitsToday)} of ${n.dailyLimit} left today.`;
+    el.innerHTML = `<h3>${n.year} ${esc(o.label)} isn't saved yet</h3>
+      <p>Look it up on Wheel-Size? Uses ${n.hitsNeeded} lookup${n.hitsNeeded === 1 ? '' : 's'}.${left} Once saved, it's free for everyone.</p>
+      ${n.options.length > 1 ? `<div class="opts" role="group" aria-label="Which model">${n.options.map((x, i) => `<button data-pick="${i}" aria-pressed="${i === pendingPick}">${esc(x.label)}</button>`).join('')}</div>` : ''}
+      ${busy ? `<p>${esc(busy)}</p>` : `<div class="acts"><button class="go" id="lookupGo">Look it up <kbd>↵</kbd></button><button id="lookupNo">Not now <kbd>Esc</kbd></button></div>`}`;
+    el.hidden = false;
+  }
+  function hidePopup() { pending = null; const el = $('lookupPop'); if (el) { el.hidden = true; el.innerHTML = ''; } }
+  function confirmLookup() {
+    const n = pending; if (!n) return;
+    const o = n.options[pendingPick] || { makeSlug: n.makeSlug, modelSlug: n.modelSlug };
+    const seq = ++vseq;
+    renderPopup('Looking it up on Wheel-Size…');
+    api.vehicle({ year: n.year, make: o.makeSlug, model: o.modelSlug }, true).then(r => {
+      if (seq !== vseq) return;
+      if (r.vehicle) {
+        VEHCACHE.set(`${n.year}|${compact(o.makeSlug)}|${compact(o.modelSlug)}`, r);
+        const mk = catalog.find(m => m.slug === o.makeSlug), md = mk && mk.models.find(m => m.slug === o.modelSlug);
+        if (md) $('qmd').value = md.name;
+      }
+      applyVehicle(r.needsLookup ? { miss: { year: n.year, label: o.label, why: 'Wheel-Size lookup failed. Check the door placard.' } } : r);
+      flush();
+    }).catch(() => { if (seq === vseq) { hidePopup(); showNone('Lookup failed'); } });
+  }
+  function cancelLookup() {
+    if (!pending) return;
+    const n = pending; hidePopup();
+    Object.assign(st, { mode: 'miss', veh: { year: n.year, label: n.label, why: 'Not looked up. Press Enter in the model box to look it up with Wheel-Size.' } });
+    render();
+  }
+  /** Fills the three boxes from a "Try:" or "OE on" button: { year, make (slug), model (slug) }. */
+  function setVehicle(y, makeSlug, modelSlug) {
+    const mk = catalog.find(m => m.slug === makeSlug), md = mk && mk.models.find(m => m.slug === modelSlug);
+    $('qv').value = String(y); $('qmk').value = mk ? mk.name : makeSlug; $('qmd').value = md ? md.name : modelSlug;
+    fillModelList(); lastBox = 'qv'; searchVehicle(true);
   }
   function searchSize(q) {
     setActive('qs'); clearBox('qv'); ++vseq; clearTimeout(vtimer);
@@ -247,9 +339,12 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
         <dt>Section width</dt><dd>${s.w} mm · ${(s.w / 25.4).toFixed(1)}″</dd><dt>Sidewall</dt><dd>${(s.w * s.a / 100).toFixed(0)} mm</dd>
         <dt>Revs / km</dt><dd>${(1e6 / (Math.PI * mm)).toFixed(0)}</dd><dt>Rim</dt><dd>${s.r}″</dd></dl></div>
         <div><div class="eyebrow">OE on</div>${!fits ? '<div class="gen">Looking up…</div>' : fits.length
-          ? `<div class="fitlist">${fits.map(f => `<button data-v="${esc(f.q)}">${esc(f.label)}</button>`).join('')}</div>`
+          ? `<div class="fitlist">${fits.map(f => `<button data-y="${f.year}" data-mk="${esc(f.make)}" data-md="${esc(f.model)}">${esc(f.label)}</button>`).join('')}</div>`
           : `<div class="gen">${data.mode === 'demo' ? 'No sample vehicles use this size.' : 'No vehicle looked up so far came on this size. The list grows as the counter is used.'}</div>`}</div>
         <div class="note">No vehicle selected, so load index isn't checked. Match it to the customer's door placard. Wheels need a vehicle search.</div>`;
+    } else if (st.mode === 'lookup') {
+      el.innerHTML = `<div><div class="eyebrow">Vehicle</div><h2>${st.veh.year} ${esc(st.veh.label)}</h2></div>
+        <div class="gen">Not saved yet. Confirm the Wheel-Size lookup above (Enter), or search the size off the door placard.</div>`;
     } else if (st.mode === 'miss') {
       el.innerHTML = `<div><div class="eyebrow">Vehicle</div><h2>${st.veh.year ?? ''} ${esc(st.veh.label)}</h2></div><div class="gen">${esc(st.veh.why || 'No fitment on file for this year.')} Check the door placard and search the size directly.</div>`;
     } else {
@@ -512,8 +607,11 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   on(document, 'click', e => {
     const ord = e.target.closest('a[data-order]');
     if (ord) { copyForOrder(ord.dataset.order, ord.dataset.filled === 'true'); return; }
-    const b = e.target.closest('[data-v],[data-s],[data-oe],[data-tab],[data-season],[data-cond],[data-wtype],[data-wcond],[data-qty],tr.wrow,tr.row,#copy,#copySize,#toTires'); if (!b) return;
-    if (b.dataset.v) { $('qv').value = b.dataset.v; searchVehicle(b.dataset.v); }
+    const b = e.target.closest('[data-y],[data-pick],#lookupGo,#lookupNo,[data-s],[data-oe],[data-tab],[data-season],[data-cond],[data-wtype],[data-wcond],[data-qty],tr.wrow,tr.row,#copy,#copySize,#toTires'); if (!b) return;
+    if (b.dataset.y) setVehicle(+b.dataset.y, b.dataset.mk, b.dataset.md);
+    else if (b.dataset.pick) { pendingPick = +b.dataset.pick; renderPopup(); }
+    else if (b.id === 'lookupGo') confirmLookup();
+    else if (b.id === 'lookupNo') cancelLookup();
     else if (b.dataset.s) { $('qs').value = b.dataset.s; searchSize(b.dataset.s); }
     else if (b.dataset.oe) setOE(+b.dataset.oe);
     else if (b.dataset.tab) setTab(b.dataset.tab);
@@ -536,12 +634,25 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     else if (e.target.id === 'wsensors') { st.sensors = e.target.checked; renderQuote(); }
   });
 
-  on($('qv'), 'input', e => searchVehicle(e.target.value));
+  for (const id of VBOX) {
+    on($(id), 'input', () => { lastBox = id; if (id === 'qmk') fillModelList(); searchVehicle(false); });
+    on($(id), 'focus', () => setActive(id));
+  }
+  // Year box jumps to Make once the year is complete: four digits, or two that can't be the start of one ("18", not "20").
+  on($('qv'), 'input', e => {
+    const v = e.target.value;
+    if (e.inputType !== 'deleteContentBackward' && (/^\d{4}$/.test(v) || (/^\d{2}$/.test(v) && !/^(19|20)$/.test(v)))) $('qmk').focus();
+  });
   on($('qs'), 'input', e => searchSize(e.target.value));
   const focusBox = id => { const el = $(id); el.focus(); el.select(); };
   on(document, 'keydown', e => {
-    if (e.target.id === 'qv' || e.target.id === 'qs') {
-      if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); flush(); if (!st.sel) autoSelect(); $('tablewrap').focus({ preventScroll: true }); render(); }
+    if (pending && e.key === 'Escape') { e.preventDefault(); cancelLookup(); return; }
+    if (pending && e.key === 'Enter' && !e.target.matches('textarea')) { e.preventDefault(); confirmLookup(); return; }
+    if (isVBox(e.target.id) || e.target.id === 'qs') {
+      const vbox = isVBox(e.target.id);
+      // Enter in a vehicle box before the vehicle has resolved: complete the model and look it up.
+      if (vbox && e.key === 'Enter' && st.mode !== 'vehicle') { e.preventDefault(); searchVehicle(true); return; }
+      if ((e.key === 'ArrowDown' && !vbox) || e.key === 'Enter') { e.preventDefault(); flush(); if (!st.sel) autoSelect(); $('tablewrap').focus({ preventScroll: true }); render(); }
       else if (e.key === 'Escape') { e.target.select(); }
       return;
     }
@@ -589,12 +700,19 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
 
   // header and examples
   $('status').innerHTML = `<span class="dot${data.mode === 'live' ? ' live' : ''}"></span>${esc(data.status)} · <a href="/sync">sync</a> · <a href="/import">import</a>`;
-  $('triesV').innerHTML = 'Try: ' + data.tries.vehicles.map(v => `<button data-v="${esc(v)}">${esc(v)}</button>`).join('');
+  $('triesV').innerHTML = 'Try: ' + data.tries.vehicles.map(v => `<button data-y="${v.year}" data-mk="${esc(v.make)}" data-md="${esc(v.model)}">${esc(v.label)}</button>`).join('');
   $('triesS').innerHTML = 'Try: ' + data.tries.sizes.map(s => `<button data-s="${esc(s)}">${esc(s)}</button>`).join('');
 
   // Demo starts in a realistic working state. Live starts empty so a page load never spends a Wheel-Size hit.
-  if (data.mode === 'demo') { $('qv').value = '18 outback'; searchVehicle('18 outback'); }
-  else { render(); $('qv').focus(); }
+  // Make/model suggestions. Until they load, boxes still work: the server matches what was typed.
+  render(); $('qv').focus();
+  api.catalog().then(c => {
+    catalog = c;
+    $('dlMake').innerHTML = c.map(m => `<option value="${esc(m.name)}"></option>`).join('');
+    fillModelList();
+    // Demo starts in a realistic working state. Live starts empty so a page load never touches Wheel-Size.
+    if (data.mode === 'demo' && !$('qv').value && !$('qmk').value) setVehicle(2018, 'subaru', 'outback');
+  }).catch(() => {});
 
   return () => { ac.abort(); clearTimeout(vtimer); };
 }

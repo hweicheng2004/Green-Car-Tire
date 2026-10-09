@@ -7,12 +7,17 @@ See `PLAN.md` for how the pieces fit and the build order.
 Server-side link between the counter dashboard and the Wheel-Size Fitment API (v2), with a Supabase cache so each vehicle-year costs two API hits (Canadian + US data) the first time and none after.
 
 ```
-Counter box "18 outback"
-  → GET /api/vehicles?q=18 outback        local table, 0 hits   → subaru / outback / 2018
-  → GET /api/fitment?make=subaru&model=outback&year=2018
-       Supabase vehicle_fitment hit?  → return it (0 hits)
-       miss → Wheel-Size /v2/search/by_model/ for cdm, then usdm (2 hits) → merge → normalize → cache → return
+Counter boxes  Year 2018 · Make Subaru · Model Outback   (make/model suggest from vehicle_models; 0 hits)
+  → GET /api/counter/vehicle?year=2018&make=subaru&model=outback
+       saved in Supabase vehicle_fitment?  → show it (0 hits)
+       not saved → { needsLookup } → popup: "2018 Subaru Outback isn't saved yet. Look it up? Uses 2 lookups (N left today)"
+  → confirmed (Enter / Look it up) → same URL + &lookup=1
+       Wheel-Size /v2/search/by_model/ for cdm and usdm in parallel (2 hits) → merge → normalize → save → show
 ```
+
+The counter never calls Wheel-Size on its own: nothing is spent while someone is typing, or on a wrong model.
+A confirmed lookup must name an exact model from the vehicle list, so the URL can't be used to spend lookups on
+arbitrary vehicles. `GET /api/fitment` (not used by the counter) still looks up directly, for scripts.
 
 ## Demo (no accounts)
 

@@ -1,10 +1,13 @@
 // Live-mode data for the counter screen: Supabase inventory and settings, Wheel-Size fitment through the cache.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { TireRow, WheelRow } from './inventory-clean';
-import { findModels } from './vehicle-lookup';
-import { getFitment } from './fitment-lookup';
+import { findModelsBy } from './vehicle-lookup';
+import { compact } from './vehicle-query';
+import { getFitment, hitsToday, DAILY_LIMIT } from './fitment-lookup';
+import { regions } from './wheelsize';
 import { syncStatus } from './inventory-sync-store';
 import { explainDbError } from './db-errors';
+import { TRIES, type VehicleAsk } from './counter-data';
 import { toCounterTire, toCounterWheel, fitmentToCounter, feesFromSettings, type CounterInventory, type VehicleResult } from './counter-data';
 
 const ago = (iso: string) => {
@@ -15,6 +18,7 @@ const ago = (iso: string) => {
 // Only what the counter shows. The raw sheet row (jsonb) and notes stay in the database.
 const TIRE_COLS = 'id, tire_size, brand, model, season, condition, tread_32nds, load_index, speed_rating, is_xl, dot_year, qty, price, location';
 const WHEEL_COLS = 'id, wheel_type, condition, grade, diameter, width, bolt_pattern, bolt_pattern_alt, center_bore, wheel_offset, description, finish, lug_seat, qty, price, location';
+
 
 export async function liveInventory(db: SupabaseClient): Promise<CounterInventory> {
   const [t, w, s, st] = await Promise.all([
@@ -35,18 +39,27 @@ export async function liveInventory(db: SupabaseClient): Promise<CounterInventor
     tires: (t.data as (TireRow & { id: number })[]).map(r => toCounterTire(r, r.id)),
     wheels: (w.data as (WheelRow & { id: number })[]).map(r => toCounterWheel(r, r.id)),
     fees: feesFromSettings(s.data as { key: string; value: unknown }[]),
-    tries: { vehicles: ['18 outback', '20 crv', '2019 honda civic', '17 f150'], sizes: ['225 65 17', '2056016', '265/70R17'] },
+    tries: { vehicles: TRIES, sizes: ['225 65 17', '2056016', '265/70R17'] },
   };
 }
 
-export async function liveVehicle(db: SupabaseClient, q: string): Promise<VehicleResult> {
-  const { year, matches } = await findModels(db, q);
-  if (!matches.length) return { none: true };
-  const m = matches[0];
+/** Year + make + model from the three counter boxes. Saved fitments only, unless `lookup` confirms a Wheel-Size
+ *  lookup; a confirmed lookup must name an exact model in the vehicle list, so a crafted URL can't spend lookups. */
+export async function liveVehicle(db: SupabaseClient, ask: VehicleAsk, lookup = false): Promise<VehicleResult> {
+  const matches = await findModelsBy(db, ask.make, ask.model);
+  const m = lookup ? matches.find(x => compact(x.model_slug) === compact(ask.model)) : matches[0];
+  if (!m) return { none: true };
   const label = `${m.make_name} ${m.model_name}`;
-  if (year === null) return { miss: { year: null, label, why: 'Add the year, like "18 outback", to look up fitment.' } };
-  const r = await getFitment(db, m.make_slug, m.model_slug, year);
-  if ('error' in r) return { miss: { year, label, why: r.error } };
+  if (ask.year === null) return { miss: { year: null, label, why: 'Add the year to look up fitment.' } };
+  const r = await getFitment(db, m.make_slug, m.model_slug, ask.year, false, lookup);
+  if ('notCached' in r) {
+    return { needsLookup: {
+      year: ask.year, makeSlug: m.make_slug, modelSlug: m.model_slug, label,
+      options: matches.slice(0, 6).map(x => ({ makeSlug: x.make_slug, modelSlug: x.model_slug, label: `${x.make_name} ${x.model_name}` })),
+      hitsNeeded: regions().length, hitsToday: await hitsToday(db), dailyLimit: DAILY_LIMIT(),
+    } };
+  }
+  if ('error' in r) return { miss: { year: ask.year, label, why: r.error } };
   const src = r.cache === 'hit' ? 'cache' : r.cache === 'miss' ? 'api' : 'stale';
   return { vehicle: fitmentToCounter(r.fit, m.make_slug, m.model_slug, src) };
 }
@@ -67,6 +80,6 @@ export async function liveOeOn(db: SupabaseClient, size: string) {
   }
   return [...groups.values()].map(g => {
     const ys = g.years.sort((a, b) => a - b), lo = ys[0], hi = ys[ys.length - 1];
-    return { label: `${lo === hi ? lo : `${lo}–${hi}`} ${title(g.make)} ${title(g.model)}`, q: `${hi} ${g.model}` };
+    return { label: `${lo === hi ? lo : `${lo}–${hi}`} ${title(g.make)} ${title(g.model)}`, year: hi, make: g.make, model: g.model };
   });
 }

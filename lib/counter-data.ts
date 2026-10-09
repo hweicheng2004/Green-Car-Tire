@@ -21,10 +21,26 @@ export type CounterVehicle = {
   seat: 'conical' | 'ball' | 'flat' | null; tq: number | null; oe: CounterOe[]; mixed: string[];
   source: 'demo' | 'cache' | 'api' | 'stale';
 };
+/** What the three vehicle boxes send. make/model are names or slugs; year null = not typed yet. */
+export type VehicleAsk = { year: number | null; make: string; model: string };
+
+/** The "Try:" buttons under the vehicle boxes. */
+export const TRIES = [
+  { year: 2018, make: 'subaru', model: 'outback', label: '18 Outback' }, { year: 2020, make: 'honda', model: 'cr-v', label: '20 CR-V' },
+  { year: 2019, make: 'honda', model: 'civic', label: '19 Civic' }, { year: 2017, make: 'ford', model: 'f-150', label: '17 F-150' },
+];
+
 export type VehicleResult =
   | { vehicle: CounterVehicle }
   | { miss: { year: number | null; label: string; why: string } }
+  | { needsLookup: LookupPrompt }
   | { none: true };
+/** A vehicle that isn't saved yet: the counter asks before spending Wheel-Size lookups on it. */
+export type LookupPrompt = {
+  year: number; makeSlug: string; modelSlug: string; label: string;
+  options: { makeSlug: string; modelSlug: string; label: string }[];   // other models matching what was typed
+  hitsNeeded: number; hitsToday: number | null; dailyLimit: number;
+};
 export type Fees = {
   mount: number; disp: number; tpms: number; tpmsOn: boolean; tax: number; tol: number;
   et: number;   // wheel offset difference from OE, in mm, that still counts as a normal fit
@@ -33,7 +49,7 @@ export type Fees = {
 };
 export type CounterInventory = {
   mode: 'demo' | 'live'; status: string; tires: CounterTire[]; wheels: CounterWheel[]; fees: Fees;
-  tries: { vehicles: string[]; sizes: string[] };
+  tries: { vehicles: { year: number; make: string; model: string; label: string }[]; sizes: string[] };
 };
 
 const SIZE = /^\d{3}\/\d{2}R\d{2}$/;
