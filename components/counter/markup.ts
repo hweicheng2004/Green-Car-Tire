@@ -18,7 +18,6 @@ export const COUNTER_MARKUP = `  <header class="bar">
         </div>
         <datalist id="dlMake"></datalist><datalist id="dlModel"></datalist>
         <div class="lookup-pop" id="lookupPop" role="dialog" aria-live="polite" hidden></div>
-        <div class="tries" id="triesV"></div>
       </div>
       <div class="field">
         <div class="flabel-row"><label for="qs" class="flabel">Tire size</label>
@@ -29,7 +28,6 @@ export const COUNTER_MARKUP = `  <header class="bar">
           <span class="parse none" id="parseS">—</span>
           <kbd>S</kbd>
         </div>
-        <div class="tries" id="triesS"></div>
       </div>
     </div>
   </section>

@@ -46,9 +46,22 @@ export async function findModelsBy(db: SupabaseClient, make: string, model: stri
     .select('make_slug, make_name, model_slug, model_name, model_compact')
     .in('region', regions()).eq('make_compact', mk).like('model_compact', `${md}%`).limit(24);
   if (error) throw new Error(error.message);
+  if (!data?.length) return baseModels(db, mk, md);
   const uniq = [...new Map((data ?? []).map(m => [`${m.make_slug}/${m.model_slug}`, m])).values()];
   return uniq.sort((a, b) => Number(b.model_compact === md) - Number(a.model_compact === md) || a.model_compact.length - b.model_compact.length)
     .map(({ model_compact, ...m }) => m).slice(0, 8);
+}
+
+/** Nothing starts with what was typed, so it may be a model plus its trim: "X3 M Comp" is the X3 M (Competition is
+ *  a trim, not a separate model), "F-150 Raptor" the F-150. The longest model name the typed text starts with wins. */
+async function baseModels(db: SupabaseClient, mk: string, md: string): Promise<ModelMatch[]> {
+  const { data, error } = await db.from('vehicle_models')
+    .select('make_slug, make_name, model_slug, model_name, model_compact')
+    .in('region', regions()).eq('make_compact', mk).limit(2000);
+  if (error) throw new Error(error.message);
+  const base = (data ?? []).filter(m => m.model_compact.length >= 2 && md.startsWith(m.model_compact))
+    .sort((a, b) => b.model_compact.length - a.model_compact.length);
+  return [...new Map(base.map(({ model_compact, ...m }) => [`${m.make_slug}/${m.model_slug}`, m])).values()].slice(0, 1);
 }
 
 export type Catalog = { slug: string; name: string; models: { slug: string; name: string }[] }[];

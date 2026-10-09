@@ -195,14 +195,44 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     return mk.models.filter(m => compact(m.name).startsWith(c) || compact(m.slug).startsWith(c))
       .sort((a, b) => Number(compact(b.name) === c || compact(b.slug) === c) - Number(compact(a.name) === c || compact(a.slug) === c) || a.name.length - b.name.length);
   };
+  // Vehicles with fitment already saved fill themselves in: typing "Su" in Make gives "Subaru" with the rest selected,
+  // so Tab or → accepts it and more typing replaces it. Only saved vehicles autofill, so it never guesses at a lookup.
+  const saved = data.saved || [];
+  let autoFilled = false;      // the make or model box holds an autofilled ending nobody has typed past yet
+  const startsWith = (name, t) => name.toLowerCase().startsWith(t.toLowerCase());
+  /** The saved make or model the typed text should complete to: that year first, then the shortest name, so "Civic"
+   *  stays "Civic" and "Civic T" becomes "Civic Type R". */
+  function completion(id, t) {
+    if (!t.trim()) return null;
+    let pool = saved;
+    if (id === 'qmd') {
+      const mText = $('qmk').value.trim(), mk = findMake(mText);
+      pool = saved.filter(v => (mk ? v.makeSlug === mk.slug : compact(v.make) === compact(mText)));
+    }
+    const name = v => (id === 'qmk' ? v.make : v.model);
+    const y = parseYear($('qv').value.trim());
+    const best = list => list.filter(v => startsWith(name(v), t)).map(name).sort((a, b) => a.length - b.length)[0];
+    return (y && best(pool.filter(v => v.years.includes(y)))) || best(pool) || null;
+  }
+  function autofill(el) {
+    if (el.selectionStart !== el.value.length) return;   // editing the middle: leave it alone
+    const t = el.value, c = completion(el.id, t);
+    if (!c || c.length <= t.length) return;
+    el.value = c; el.setSelectionRange(t.length, c.length); autoFilled = true;
+  }
+  /** Saved makes and models first in the suggestion lists, then the rest of the make/model list. */
+  const options = names => [...new Set(names)].map(n => `<option value="${esc(n)}"></option>`).join('');
+  function fillMakeList() { $('dlMake').innerHTML = options([...saved.map(v => v.make), ...catalog.map(m => m.name)]); }
   function fillModelList() {
-    const mk = findMake($('qmk').value);
-    $('dlModel').innerHTML = (mk ? mk.models : []).map(m => `<option value="${esc(m.name)}"></option>`).join('');
+    const mText = $('qmk').value.trim(), mk = findMake(mText);
+    const mine = saved.filter(v => (mk ? v.makeSlug === mk.slug : mText && compact(v.make) === compact(mText))).map(v => v.model);
+    $('dlModel').innerHTML = options([...mine, ...(mk ? mk.models.map(m => m.name) : [])]);
   }
   /** Reads the three boxes. `force` (Enter) completes a partial model to the closest match. */
   function searchVehicle(force = false) {
     setActive(lastBox && isVBox(lastBox) ? lastBox : 'qv'); clearBox('qs');
     const seq = ++vseq; clearTimeout(vtimer); hidePopup();
+    const quiet = autoFilled && !force;   // an autofilled name that isn't saved for this year: no popup until Enter
     const yText = $('qv').value.trim(), mText = $('qmk').value.trim(), mdText = $('qmd').value.trim();
     const year = parseYear(yText);
     st.query = [yText, mText, mdText].filter(Boolean).join(' '); st.lastKind = 'vehicle';
@@ -216,7 +246,11 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     if (mk) {
       const ms = modelMatches(mk, mdText);
       const exact = ms.find(m => compact(m.name) === compact(mdText) || compact(m.slug) === compact(mdText));
-      if (!ms.length && !force) return showNone('Not in list · ↵');
+      // A model plus its trim, "X3 M Comp": the longest model name it starts with. The trim picks the size later.
+      const base = ms.length ? null : mk.models.filter(m => [m.name, m.slug].some(n => compact(n).length >= 2 && compact(mdText).startsWith(compact(n))))
+        .sort((a, b) => compact(b.name).length - compact(a.name).length)[0];
+      if (base) model = base.slug;
+      else if (!ms.length && !force) return showNone('Not in list · ↵');
       if (ms.length && !exact && !force) return showNone(ms.length === 1 ? `↵ ${ms[0].name}` : 'Pick a model');
       if (ms.length) { model = (exact || ms[0]).slug; if (!exact) $('qmd').value = ms[0].name; }
     }
@@ -229,9 +263,17 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     vtimer = setTimeout(() => {
       api.vehicle(ask).then(r => {
         if (r.vehicle || r.miss) VEHCACHE.set(key, r);   // "not saved yet" isn't cached: it changes once looked up
-        if (seq === vseq) applyVehicle(r, force);
+        if (seq !== vseq) return;
+        if (r.needsLookup && quiet) showNone(`Not saved for ${r.needsLookup.year} · ↵`);
+        else applyVehicle(r, force);
       }).catch(() => { if (seq === vseq) showNone('Lookup failed', true); });
     }, force ? 0 : 200);
+  }
+  /** What was typed past the model name ("comp" in "X3 M Comp"): picks the size for that trim. */
+  function trimHint(v) {
+    const typed = compact($('qmd').value);
+    const base = [v.model, v.modelSlug].map(compact).filter(b => b && typed.length > b.length && typed.startsWith(b))[0];
+    return base ? typed.slice(base.length) : '';
   }
   /** `fromEnter`: the search came from Enter, so a "not saved yet" popup takes focus (typing never loses it). */
   function applyVehicle(r, fromEnter = false) {
@@ -248,7 +290,8 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     if (r.vehicle && r.vehicle.oe.length) {
       const v = r.vehicle;
       setSubject(`v|${v.year}|${v.makeSlug}|${v.modelSlug}`);
-      Object.assign(st, { mode: 'vehicle', veh: { v, year: v.year, assumed: v.assumed }, oeIdx: 0 }); setOE(0, false);
+      const hint = trimHint(v), at = hint ? v.oe.findIndex(o => compact(o[3]).includes(hint)) : -1;
+      Object.assign(st, { mode: 'vehicle', veh: { v, year: v.year, assumed: v.assumed }, oeIdx: 0 }); setOE(Math.max(at, 0), false);
       p.className = 'parse veh'; p.textContent = `${v.year} ${v.make} ${v.model}`;
     } else if (r.vehicle || r.miss) {
       const m = r.miss || { year: r.vehicle.year, label: `${r.vehicle.make} ${r.vehicle.model}`, why: 'No tire sizes on file for this vehicle. Check the door placard.' };
@@ -345,7 +388,7 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     fillModelList(); compute(); autoSelect(); render();
     lastBox = 'qv'; setActive('qv'); $('qv').focus();
   }
-  /** Fills the three boxes from a "Try:" or "OE on" button: { year, make (slug), model (slug) }. */
+  /** Fills the three boxes from an "OE on" or "Other versions" button: { year, make (slug), model (slug) }. */
   function setVehicle(y, makeSlug, modelSlug) {
     const mk = catalog.find(m => m.slug === makeSlug), md = mk && mk.models.find(m => m.slug === modelSlug);
     $('qv').value = String(y); $('qmk').value = mk ? mk.name : makeSlug; $('qmd').value = md ? md.name : modelSlug;
@@ -385,9 +428,9 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
       const src = v.source === 'demo' ? 'Sample fitment (demo)' : v.source === 'stale' ? 'Wheel-Size, older cached copy (lookup failed just now)' : 'Wheel-Size';
       el.innerHTML = `<div><h2>${year} ${esc(v.make)} ${esc(v.model)}</h2>
         <div class="gen">${v.gen ? esc(v.gen) + ' generation' : ''}${assumed ? ' · no year typed, assuming latest' : ''}</div></div>
-        <div><div class="eyebrow">OE sizes · pick by trim</div><div class="oe">${v.oe.map((o, i) => { const n = onHand(o[0]); return `
+        <div><div class="eyebrow">${v.oe.some(o => o[6]) ? 'Factory and optional sizes' : 'OE sizes'} · pick by trim</div><div class="oe">${v.oe.map((o, i) => { const n = onHand(o[0]); return `
           <button data-oe="${i}" aria-pressed="${i === st.oeIdx}"><span class="sz">${o[0]} <span class="lisr">${q2(o[1])}${o[2] ?? ''}</span></span>
-          <span class="trim">${esc(o[3])} · <span class="mono">${parseSize(o[0]).r}×${q2(o[4])} ET${q2(o[5])}</span></span><span class="cnt ${n ? 'in' : 'out'}">${n ? n + ' tires' : 'no tires'}</span></button>`; }).join('')}</div></div>
+          <span class="trim">${o[6] ? '<b class="optsz">Optional</b> · ' : ''}${esc(o[3])} · <span class="mono">${parseSize(o[0]).r}×${q2(o[4])} ET${q2(o[5])}</span></span><span class="cnt ${n ? 'in' : 'out'}">${n ? n + ' tires' : 'no tires'}</span></button>`; }).join('')}</div></div>
         <div><div class="eyebrow">Wheel fitment</div><dl><dt>Bolt pattern (PCD)</dt><dd>${esc(v.bolt ?? '—')}</dd><dt>Center bore</dt><dd>${v.cb != null ? v.cb + ' mm' : '—'}</dd>
           <dt>Lug thread</dt><dd>${esc(v.lug ?? '—')}</dd><dt>OE lug seat</dt><dd>${v.seat ? SEAT[v.seat].split(' ')[0] : '—'}</dd><dt>Torque</dt><dd>${v.tq ? v.tq + ' ft·lb' : '—'}</dd></dl></div>
         ${v.mixed && v.mixed.length ? `<div class="warns">${v.mixed.map(m => `<div class="pivot">${esc(m)}</div>`).join('')}</div>` : ''}
@@ -770,7 +813,12 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   });
 
   for (const id of VBOX) {
-    on($(id), 'input', () => { lastBox = id; if (id === 'qmk') fillModelList(); searchVehicle(false); });
+    on($(id), 'input', e => {
+      lastBox = id; autoFilled = false;
+      if (id !== 'qv' && /^insert(Text|CompositionText)$/.test(e.inputType || '')) autofill(e.target);
+      if (id === 'qmk') fillModelList();
+      searchVehicle(false);
+    });
     on($(id), 'focus', () => setActive(id));
   }
   // Year box jumps to Make once the year is complete: four digits, or two that can't be the start of one ("18", not "20").
@@ -862,19 +910,15 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     on($('dn' + i), 'input', upd); on($('du' + i), 'input', upd);
   }
 
-  // header and examples
+  // header
   $('status').innerHTML = `<span class="dot${data.mode === 'live' ? ' live' : ''}"></span>${esc(data.status)} · <a href="/sync">sync</a> · <a href="/import">import</a> · <a href="/setup">setup</a>`;
-  $('triesV').innerHTML = 'Try: ' + data.tries.vehicles.map(v => `<button data-y="${v.year}" data-mk="${esc(v.make)}" data-md="${esc(v.model)}">${esc(v.label)}</button>`).join('');
-  $('triesS').innerHTML = 'Try: ' + data.tries.sizes.map(s => `<button data-s="${esc(s)}">${esc(s)}</button>`).join('');
 
   // Starts empty, showing the whole inventory (and a page load never spends a Wheel-Size hit).
   // Make/model suggestions. Until they load, boxes still work: the server matches what was typed.
-  compute(); render(); $('qv').focus();
+  compute(); render(); fillMakeList(); $('qv').focus();
   api.catalog().then(c => {
     catalog = c;
-    $('dlMake').innerHTML = c.map(m => `<option value="${esc(m.name)}"></option>`).join('');
-    fillModelList();
-    // Demo starts in a realistic working state. Live starts empty so a page load never touches Wheel-Size.
+    fillMakeList(); fillModelList();
   }).catch(() => {});
 
   return () => { ac.abort(); clearTimeout(vtimer); };

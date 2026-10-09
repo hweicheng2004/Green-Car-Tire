@@ -4,7 +4,7 @@
 
 const BASE = 'https://api.wheel-size.com/v2';
 
-export type Region = 'cdm' | 'usdm';
+export type Region = 'cdm' | 'usdm' | 'mxndm';   // Canada, US, Mexico
 
 /** Markets to query, in priority order. Default "cdm,usdm": Wheel-Size tags many Canadian trims
  *  (e.g. 2018 Outback 2.5i) as US-only, and Canadian and US fitment is the same for nearly all cars. */

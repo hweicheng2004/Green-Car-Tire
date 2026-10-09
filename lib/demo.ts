@@ -7,7 +7,7 @@ import { cleanTab, planKind, issueSheet, type KindPlan, type TabResult } from '.
 import type { TireRow, WheelRow } from './inventory-clean';
 import { compact } from './vehicle-query';
 import type { Catalog } from './vehicle-lookup';
-import { toCounterTire, toCounterWheel, feesFromSettings, TRIES, type VehicleAsk, type CounterInventory, type CounterVehicle, type CounterOe, type VehicleResult } from './counter-data';
+import { toCounterTire, toCounterWheel, feesFromSettings, groupSaved, type VehicleAsk, type CounterInventory, type CounterVehicle, type CounterOe, type VehicleResult } from './counter-data';
 
 export const isDemo = (env: Record<string, string | undefined> = process.env) =>
   env.DEMO_MODE === '1' || env.DEMO_MODE === 'true' || (!env.SUPABASE_URL && env.DEMO_MODE !== '0');
@@ -33,6 +33,8 @@ export const DEMO_VEHICLES: DemoVeh[] = [
   v('Honda', 'Civic Type R', 'civic-type-r', 2023, 2025, '5×120', 64.1, 'M14×1.5', 'ball', 94, [['265/30R19', 93, 'Y', 'Type R', 9.5, 60]]),
   v('Toyota', 'Corolla', 'corolla', 2019, 2024, '5×100', 54.1, 'M12×1.5', 'flat', 76, [['195/65R15', 91, 'H', 'L, LE', 6, 40], ['205/55R16', 91, 'V', 'LE, XLE', 6.5, 40], ['225/40R18', 92, 'Y', 'SE, XSE', 8, 40]]),
   v('Ford', 'F-150', 'f-150', 2015, 2020, '6×135', 87.1, 'M14×2.0', 'conical', 150, [['265/70R17', 115, 'T', 'XL, XLT', 7.5, 44], ['275/65R18', 116, 'T', 'XLT, Lariat', 7.5, 44], ['275/55R20', 111, 'T', 'Platinum, Limited', 8.5, 44]]),
+  // Competition is a trim of the X3 M in Wheel-Size, not its own model: "X3 M Comp" finds the X3 M, Competition size first.
+  v('BMW', 'X3 M', 'x3-m', 2020, 2024, '5×112', 66.5, 'M14×1.25', 'ball', 103, [['255/45R20', 105, 'Y', 'X3 M', 9.5, 32], ['255/40R21', 102, 'Y', 'X3 M Competition', 9.5, 32]]),
   v('Mazda', 'CX-5', 'cx-5', 2017, 2024, '5×114.3', 67.1, 'M12×1.5', 'conical', 80, [['225/65R17', 102, 'H', 'GX, GS', 7, 50], ['225/55R19', 99, 'V', 'GT, Signature', 7, 45]]),
   v('Ford', 'Escape', 'escape', 2020, 2024, '5×108', 63.4, 'M14×1.5', 'conical', 100, [['225/65R17', 102, 'H', 'S, SE', 7, 52], ['225/60R18', 100, 'H', 'SEL', 7.5, 52], ['225/55R19', 99, 'H', 'Titanium', 8, 52]]),
 ];
@@ -55,8 +57,13 @@ let demoHits = 0;
 export function demoVehicle(ask: VehicleAsk, lookup = false): VehicleResult {
   const mk = compact(ask.make), md = compact(ask.model);
   if (!mk || !md) return { none: true };
-  const cands = DEMO_VEHICLES.filter(d => compact(d.makeSlug) === mk && compact(d.modelSlug).startsWith(md))
-    .sort((a, b) => Number(compact(b.modelSlug) === md) - Number(compact(a.modelSlug) === md));
+  let cands = DEMO_VEHICLES.filter(d => compact(d.makeSlug) === mk && compact(d.modelSlug).startsWith(md));
+  if (!cands.length) {   // a model plus its trim ("x3m comp"): the longest model the typed text starts with
+    const base = DEMO_VEHICLES.filter(d => compact(d.makeSlug) === mk && md.startsWith(compact(d.modelSlug)))
+      .sort((a, b) => b.modelSlug.length - a.modelSlug.length)[0];
+    cands = base ? DEMO_VEHICLES.filter(d => d.modelSlug === base.modelSlug && d.makeSlug === base.makeSlug) : [];
+  }
+  cands.sort((a, b) => Number(compact(b.modelSlug) === md) - Number(compact(a.modelSlug) === md));
   const pick = lookup ? cands.filter(d => compact(d.modelSlug) === md) : cands.filter(d => d.modelSlug === cands[0]?.modelSlug);
   if (!pick.length) return { none: true };
   const first = pick[0], key = `${first.makeSlug}/${first.modelSlug}`, label = `${first.make} ${first.model}`;
@@ -111,6 +118,7 @@ export function demoInventory(): CounterInventory {
     tires: plans[0].rows.map((r, i) => toCounterTire(r as TireRow, i)),
     wheels: plans[1].rows.map((r, i) => toCounterWheel(r as WheelRow, i)),
     fees: feesFromSettings([]),
-    tries: { vehicles: TRIES, sizes: ['225 65 17', '2056016', '265/70R17'] },
+    saved: groupSaved(DEMO_VEHICLES.filter(d => !NOT_SAVED.has(`${d.makeSlug}/${d.modelSlug}`))
+      .flatMap(d => Array.from({ length: d.to - d.from + 1 }, (_, i) => ({ ...d, year: d.from + i })))),
   };
 }

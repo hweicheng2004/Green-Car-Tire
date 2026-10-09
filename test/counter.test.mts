@@ -76,7 +76,10 @@ assert.deepEqual([usedTire.used, usedTire.tread], [true, 7]);
 const dual = inv.wheels.find(w => w.pcds.length === 2)!;
 assert.deepEqual(dual.pcds, ['5×100', '5×114.3'], 'dual-drilled wheel matches both, in the × format fitment uses');
 assert.equal(new Set(inv.tires.map(t => t.id)).size, inv.tires.length, 'unique ids');
-for (const v of inv.tries.vehicles) assert.ok('vehicle' in demoVehicle(ask(v.year, v.make, v.model)), `Try button "${v.label}" resolves`);
+for (const v of inv.saved) assert.ok('vehicle' in demoVehicle(ask(v.years[0], v.makeSlug, v.modelSlug)), `saved ${v.make} ${v.model} resolves`);
+assert.ok(inv.saved.some(v => v.model === 'Civic Type R') && !inv.saved.some(v => v.modelSlug === 'escape'), 'autofill offers saved vehicles only');
+const x3 = demoVehicle(ask(2022, 'bmw', 'x3m comp'));
+assert.ok('vehicle' in x3 && x3.vehicle.model === 'X3 M', 'model plus trim ("X3 M Comp") finds the X3 M');
 const { sheet } = demoIssueSheet();
 assert.deepEqual(sheet.filter(r => r[2] === 'Not synced').map(r => r[1]), ['23', '24', '14']);
 
@@ -88,6 +91,8 @@ const cv = fitmentToCounter(normalize([...seen.values()], 2018)!, 'subaru', 'out
 assert.equal(cv.bolt, '5×114.3', 'same bolt format as wheel pcds');
 assert.equal(cv.cb, 56.1);
 assert.ok(cv.oe.some(o => o[0] === '225/65R17' && o[1] === 102 && o[5] === 55), 'OE tuple: size, load, ..., offset');
+assert.deepEqual(cv.oe.map(o => o[0]), ['225/65R17', '225/60R18', '245/60R17', '245/55R18', '245/55R18', '245/50R19'], 'every Wheel-Size size, factory first');
+assert.deepEqual(cv.oe.map(o => !!o[6]), [false, false, true, true, true, true], 'optional sizes flagged');
 assert.ok(cv.oe.every(o => /^\d{3}\/\d{2}R\d{2}$/.test(o[0])));
 
 const fees = feesFromSettings([

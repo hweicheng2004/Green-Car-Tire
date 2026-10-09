@@ -13,8 +13,9 @@ export type CounterWheel = {
   pcd: string; pcds: string[]; cb: number | null; et: number | null; desc: string; finish: string;
   seat: 'conical' | 'ball' | 'flat' | null; qty: number; price: number | null; loc: string;
 };
-/** OE size tuple, same order as the prototype: size, load index, speed rating, trims, rim width, offset. */
-export type CounterOe = [string, number | null, string | null, string, number | null, number | null];
+/** OE size tuple, same order as the prototype: size, load index, speed rating, trims, rim width, offset, and true when
+ *  Wheel-Size lists it as an optional (non-factory) size. */
+export type CounterOe = [string, number | null, string | null, string, number | null, number | null, boolean?];
 export type CounterVehicle = {
   make: string; model: string; makeSlug: string; modelSlug: string; year: number; assumed: boolean;
   gen: string | null; bolt: string | null; cb: number | null; lug: string | null;
@@ -27,11 +28,8 @@ export type CounterVehicle = {
 /** What the three vehicle boxes send. make/model are names or slugs; year null = not typed yet. */
 export type VehicleAsk = { year: number | null; make: string; model: string };
 
-/** The "Try:" buttons under the vehicle boxes. */
-export const TRIES = [
-  { year: 2018, make: 'subaru', model: 'outback', label: '18 Outback' }, { year: 2020, make: 'honda', model: 'cr-v', label: '20 CR-V' },
-  { year: 2019, make: 'honda', model: 'civic', label: '19 Civic' }, { year: 2017, make: 'ford', model: 'f-150', label: '17 F-150' },
-];
+/** A vehicle with fitment already saved: the Make and Model boxes autofill from these first (no lookup needed). */
+export type SavedVehicle = { makeSlug: string; make: string; modelSlug: string; model: string; years: number[] };
 
 export type VehicleResult =
   | { vehicle: CounterVehicle }
@@ -54,7 +52,7 @@ export type Fees = {
 };
 export type CounterInventory = {
   mode: 'demo' | 'live'; status: string; tires: CounterTire[]; wheels: CounterWheel[]; fees: Fees;
-  tries: { vehicles: { year: number; make: string; model: string; label: string }[]; sizes: string[] };
+  saved: SavedVehicle[];
 };
 
 const SIZE = /^\d{3}\/\d{2}R\d{2}$/;
@@ -80,15 +78,33 @@ export function toCounterWheel(r: WheelRow, id: number): CounterWheel {
   };
 }
 
+/** Fitment rows (one per year) -> saved vehicles, most years first. */
+export function groupSaved(rows: { makeSlug: string; make: string; modelSlug: string; model: string; year: number }[]): SavedVehicle[] {
+  const by = new Map<string, SavedVehicle>();
+  for (const r of rows) {
+    const k = `${r.makeSlug}/${r.modelSlug}`;
+    const v = by.get(k) ?? by.set(k, { makeSlug: r.makeSlug, make: r.make, modelSlug: r.modelSlug, model: r.model, years: [] }).get(k)!;
+    if (!v.years.includes(r.year)) v.years.push(r.year);
+  }
+  return [...by.values()].map(v => ({ ...v, years: v.years.sort((a, b) => b - a) }))
+    .sort((a, b) => b.years.length - a.years.length || a.make.localeCompare(b.make) || a.model.localeCompare(b.model));
+}
+
 export function fitmentToCounter(f: Fitment, makeSlug: string, modelSlug: string, source: CounterVehicle['source']): CounterVehicle {
-  // Factory sizes first; options only if Wheel-Size listed no factory size the counter can read.
-  const usable = f.oe.filter(o => SIZE.test(o.tire));
-  const stock = usable.filter(o => o.stock);
-  const list = stock.length ? stock : usable;
+  // Every size Wheel-Size lists: factory sizes first, then the optional ones. An option that's the same tire on the same
+  // rim as a factory size is left out (the factory entry already covers it).
+  const seen = new Set<string>();
+  const list = f.oe.filter(o => SIZE.test(o.tire))
+    .sort((a, b) => Number(b.stock) - Number(a.stock))
+    .filter(o => { const k = `${o.tire}|${o.rimWidth}|${o.offset}`; return !seen.has(k) && !!seen.add(k); });
   return {
     make: f.make, model: f.model, makeSlug, modelSlug, year: f.year, assumed: false,
     gen: f.generationYears, bolt: f.boltPattern, cb: f.centreBoreMm, lug: f.lugThread, seat: f.lugSeat, tq: f.torqueFtLb,
-    oe: list.map(o => [o.tire, o.loadIndex, o.speedRating, o.trims.join(', '), o.rimWidth, o.offset]),
+    oe: list.map((o): CounterOe => {
+      const t: CounterOe = [o.tire, o.loadIndex, o.speedRating, o.trims.join(', '), o.rimWidth, o.offset];
+      if (!o.stock) t.push(true);
+      return t;
+    }),
     mixed: f.mixedSpecs, source,
   };
 }

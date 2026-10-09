@@ -7,8 +7,7 @@ import { getFitment, hitsToday, DAILY_LIMIT } from './fitment-lookup';
 import { regions } from './wheelsize';
 import { syncStatus } from './inventory-sync-store';
 import { explainDbError } from './db-errors';
-import { TRIES, type VehicleAsk } from './counter-data';
-import { toCounterTire, toCounterWheel, fitmentToCounter, feesFromSettings, type CounterInventory, type VehicleResult } from './counter-data';
+import { toCounterTire, toCounterWheel, fitmentToCounter, feesFromSettings, groupSaved, type CounterInventory, type VehicleResult, type VehicleAsk } from './counter-data';
 
 const ago = (iso: string) => {
   const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
@@ -21,11 +20,12 @@ const WHEEL_COLS = 'id, wheel_type, condition, grade, diameter, width, bolt_patt
 
 
 export async function liveInventory(db: SupabaseClient): Promise<CounterInventory> {
-  const [t, w, s, st] = await Promise.all([
+  const [t, w, s, st, saved] = await Promise.all([
     db.from('tires').select(TIRE_COLS).order('tire_size').limit(5000),
     db.from('wheels').select(WHEEL_COLS).order('diameter').limit(5000),
     db.from('shop_settings').select('key, value'),
     syncStatus(db).catch(() => null),   // status line only; never blocks the counter
+    savedVehicles(db).catch(() => []),  // autofill only; never blocks the counter
   ]);
   for (const r of [t, w, s]) if (r.error) throw new Error(explainDbError(r.error));
   let status = 'Inventory not synced yet';
@@ -39,8 +39,16 @@ export async function liveInventory(db: SupabaseClient): Promise<CounterInventor
     tires: (t.data as (TireRow & { id: number })[]).map(r => toCounterTire(r, r.id)),
     wheels: (w.data as (WheelRow & { id: number })[]).map(r => toCounterWheel(r, r.id)),
     fees: feesFromSettings(s.data as { key: string; value: unknown }[]),
-    tries: { vehicles: TRIES, sizes: ['225 65 17', '2056016', '265/70R17'] },
+    saved,
   };
+}
+
+/** Vehicles with fitment saved, for autofill in the Make and Model boxes. Names come from the saved fitment. */
+async function savedVehicles(db: SupabaseClient) {
+  const { data, error } = await db.from('vehicle_fitment').select('make_slug, model_slug, year, make:data->>make, model:data->>model').limit(5000);
+  if (error) throw error;
+  return groupSaved((data as { make_slug: string; model_slug: string; year: number; make: string | null; model: string | null }[])
+    .map(r => ({ makeSlug: r.make_slug, modelSlug: r.model_slug, year: r.year, make: r.make || title(r.make_slug), model: r.model || title(r.model_slug) })));
 }
 
 /** Year + make + model from the three counter boxes. Saved fitments only, unless `lookup` confirms a Wheel-Size
