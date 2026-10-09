@@ -110,10 +110,12 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
       const ring = v.cb != null && w.cb != null && w.cb > v.cb + 0.05, minus = w.d < minD, plus = w.d > maxD, etWarn = Math.abs(dEt) > 7;
       const lug = !!(w.seat && v.seat && w.seat !== v.seat);
       const tire = same.length ? { key: ref.size, delta: 0 } : suggestTire(w.d, ref);
-      const direct = !ring && !minus && !plus && !etWarn && Math.abs(dW) <= 0.5 && !unknown.length;
+      // A bigger bore is a normal fit: hub-centric rings take up the gap and go on the quote automatically.
+      // Only a smaller bore rules a wheel out (above). Size, offset and width changes still get their own group.
+      const direct = !minus && !plus && !etWarn && Math.abs(dW) <= 0.5 && !unknown.length;
       st.wrows.push({ ...w, ref, dW, dEt, ring, minus, plus, etWarn, lug, unknown, tire, group: direct ? 'direct' : 'adapt', cur: w.d === cur.d });
     }
-    st.wrows.sort((a, b) => (a.group === b.group ? 0 : a.group === 'direct' ? -1 : 1) || (b.cur - a.cur) || (b.qty > 0) - (a.qty > 0) || (a.price ?? 1e9) - (b.price ?? 1e9));
+    st.wrows.sort((a, b) => (a.group === b.group ? 0 : a.group === 'direct' ? -1 : 1) || (b.cur - a.cur) || (b.qty > 0) - (a.qty > 0) || (a.ring - b.ring) || (a.price ?? 1e9) - (b.price ?? 1e9));
   }
   function visible() {
     return st.rows.filter(r => (!st.stock || r.qty > 0) && (st.season === 'all' || r.season === st.season) && (st.cond === 'all' || (st.cond === 'new' ? !r.used : r.used)));
@@ -351,10 +353,10 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
       fil.innerHTML = ''; ex.innerHTML = ''; rows.innerHTML = `<tr><td colspan="9" class="empty">Type a vehicle in the year · make · model box.</td></tr>`; return;
     }
     const v = st.veh.v, inS = st.wrows.filter(w => w.qty > 0);
-    const dn = inS.filter(w => w.group === 'direct').length, an = inS.length - dn;
+    const dn = inS.filter(w => w.group === 'direct').length, an = inS.length - dn, rn = inS.filter(w => w.group === 'direct' && w.ring).length;
     const spec = `${esc(v.bolt ?? 'bolt pattern unknown')}${v.cb != null ? ` · ${v.cb} mm bore` : ''}`;
     ban.innerHTML = !v.bolt ? `<div class="banner info">No bolt pattern on file for this vehicle, so wheels can't be matched.</div>`
-      : inS.length ? `<div class="banner ${dn ? 'ok' : 'pivot'}"><b>${spec}</b> ${dn} direct-fit line${dn === 1 ? '' : 's'}${an ? `, ${an} more that fit with rings or notes` : ''}</div>`
+      : inS.length ? `<div class="banner ${dn ? 'ok' : 'pivot'}"><b>${spec}</b> ${dn} line${dn === 1 ? '' : 's'} fit${dn === 1 ? 's' : ''}${rn ? ` (${rn} with hub rings, added to the quote)` : ''}${an ? `, ${an} more with a size or offset change` : ''}</div>`
       : `<div class="banner info"><b>${spec}</b> No wheels on hand for this vehicle.</div>`;
     const segT = [['all', 'All'], ['Alloy', 'Alloy'], ['Steel', 'Steel']].map(([k, l]) => `<button data-wtype="${k}" aria-pressed="${st.wtype === k}">${l}<span class="n">${st.wrows.filter(w => (!st.stock || w.qty > 0) && (k === 'all' || w.type === k)).length}</span></button>`).join('');
     const segC = [['all', 'New + used'], ['new', 'New'], ['used', 'Used']].map(([k, l]) => `<button data-wcond="${k}" aria-pressed="${st.wcond === k}">${l}</button>`).join('');
@@ -367,8 +369,8 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
       for (const w of list) {
         if (w.group !== last) {
           last = w.group;
-          html += w.group === 'direct' ? `<tr class="grp"><td colspan="9">Direct fit<span>hub-centric, OE diameter, offset within 7 mm</span></td></tr>`
-            : `<tr class="grp"><td colspan="9">Fits with notes<span>rings, plus/minus size, offset change or missing specs</span></td></tr>`;
+          html += w.group === 'direct' ? `<tr class="grp"><td colspan="9">Fits<span>bolt pattern matches, bore same or larger (rings added), OE diameter, offset within 7 mm</span></td></tr>`
+            : `<tr class="grp"><td colspan="9">Fits with notes<span>plus/minus size, offset or width change, or missing specs</span></td></tr>`;
         }
         const notes = [];
         if (w.ring) notes.push(`<span class="chip ring">Ring ${w.cb}→${v.cb}</span>`);
@@ -456,7 +458,7 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
     if (w.price == null) warns.push(`<div class="bad">No price in the sheet for this line. The total leaves the wheels out.</div>`);
     if (w.qty < c.q) warns.push(`<div class="bad">Only ${w.qty} on hand. Short ${c.q - w.qty} for this quote.</div>`);
     if (w.lug) warns.push(`<div class="bad">${esc(v.make)} OE lug nuts are ${SEAT[v.seat]}. These wheels need ${SEAT[w.seat]} seat${v.lug ? ', ' + esc(v.lug) : ''}. Lug set added.</div>`);
-    if (w.ring) warns.push(`<div class="pivot">Bore ${w.cb} mm on a ${v.cb} mm hub. Hub-centric rings ${w.cb}→${v.cb} added.</div>`);
+    if (w.ring) warns.push(`<div>Bore ${w.cb} mm on a ${v.cb} mm hub. Hub-centric rings ${w.cb}→${v.cb} are on the quote.</div>`);
     if (w.unknown.length) warns.push(`<div class="bad">The sheet has no ${w.unknown.join(', ')} for this wheel. Measure before quoting.</div>`);
     if (w.minus) warns.push(`<div class="pivot">Minus-size ${w.d}″ wheel. Test-fit over the brake calipers before mounting.</div>`);
     if (w.plus) warns.push(`<div class="pivot">Plus-size ${w.d}″ wheel. Needs a lower-profile tire to keep overall diameter.</div>`);
