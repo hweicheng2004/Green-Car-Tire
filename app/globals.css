@@ -252,7 +252,7 @@ tr.imp-bad td{background:var(--bad-soft)}
 /* load splash: logo for 1 s, then a 0.4 s fade; clicks and typing pass through the whole time */
 .splash{position:fixed;inset:0;z-index:100;display:grid;place-items:center;background:#F4F6F8;pointer-events:none;
   animation:splash-out .4s ease 1s forwards}
-.splash img{width:min(420px,70vw);height:auto;animation:splash-in .35s ease-out both}
+.splash img{width:min(480px,80vw);height:auto;animation:splash-in .35s ease-out both}
 @keyframes splash-out{to{opacity:0;visibility:hidden}}
 @keyframes splash-in{from{opacity:0;transform:scale(.96)}}
 @media (prefers-reduced-motion:reduce){.splash img{animation:none}.splash{animation-duration:.01s}}
