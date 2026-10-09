@@ -38,7 +38,8 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   for (const t of INV) {
     (byRim.get(t.s.r) || byRim.set(t.s.r, []).get(t.s.r)).push(t);
     qtyBySize.set(t.size, (qtyBySize.get(t.size) || 0) + t.qty);
-    maxLiBySize.set(t.size, Math.max(maxLiBySize.get(t.size) ?? 0, t.li ?? 0));
+    // A size where some tire has no load index on file counts as unknown (Infinity): it isn't ruled out.
+    maxLiBySize.set(t.size, Math.max(maxLiBySize.get(t.size) ?? 0, t.li ?? Infinity));
   }
   const SIZES = [...qtyBySize.keys()];
   const onHand = key => qtyBySize.get(key) || 0;
@@ -98,11 +99,11 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
         if (Math.abs(delta) <= fees.tol) group = 'alt';
       }
       if (!group) continue;
-      // Below the OE load index (or unknown): never offered for this vehicle.
-      if (oe && oe.li != null && (t.li ?? 0) < oe.li) {
+      // Below the OE load index: never offered for this vehicle. No load index in the sheet: shown, flagged to check.
+      if (oe && oe.li != null && t.li != null && t.li < oe.li) {
         const e = ex.get(t.size) || { size: t.size, li: t.li, oeLi: oe.li, n: 0 }; e.n += t.qty; e.li = Math.max(e.li ?? 0, t.li ?? 0); ex.set(t.size, e); continue;
       }
-      st.rows.push({ ...t, key: axle ? axle + t.id : t.id, axle, oeLi: li, oeSr: sr, group, delta,
+      st.rows.push({ ...t, key: axle ? axle + t.id : t.id, axle, oeLi: li, oeSr: sr, group, delta, liUnknown: li != null && t.li == null,
         srWarn: !!(oe && oe.sr && t.sr && t.season !== 'W' && srRank(t.sr) < srRank(oe.sr)) });
     }
     st.excluded.push(...ex.values());
@@ -599,7 +600,7 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
           <td class="tname"><b>${esc(r.brand)}</b> <span>${esc(r.model)}</span></td>
           <td>${sea}</td>
           <td>${r.used ? `Used${r.tread != null ? ` <span class="mono">${r.tread}/32″</span>` : ''}` : 'New'}</td>
-          <td class="mono">${q2(r.li)}${r.sr ?? ''}${r.xl ? '<span class="chip xl">XL</span>' : ''}${r.srWarn ? '<span class="chip warn" title="Speed rating below OE">SR&lt;OE</span>' : ''}</td>
+          <td class="mono">${r.liUnknown ? '' : q2(r.li)}${r.sr ?? ''}${r.xl ? '<span class="chip xl">XL</span>' : ''}${r.srWarn ? '<span class="chip warn" title="Speed rating below OE">SR&lt;OE</span>' : ''}${r.liUnknown ? `<span class="chip warn" title="No load index in the sheet: check the sidewall shows ${r.oeLi} or higher">Load ?</span>` : ''}</td>
           <td class="mono">${r.dot ?? '—'}</td>
           <td class="r mono ${r.qty ? '' : 'qty0'}">${r.qty}</td>
           <td class="r price">${money(r.price)}</td>
@@ -695,6 +696,7 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
       out.push({ cls: 'pivot', text: `${side}Alternate size, ${pct(r.delta)} diameter. At an indicated 100 km/h the car will be doing ${at} km/h.`,
         say: `Alternate size (${pct(r.delta)} diameter): at an indicated 100 km/h you'll be doing ${at} km/h.` });
     }
+    if (r.liUnknown) out.push({ cls: 'pivot', text: `${side}Load index isn't in the sheet. Check the sidewall shows ${r.oeLi} or higher before fitting.`, say: null });
     if (r.srWarn) out.push({ cls: 'bad', text: `${side}Speed rating ${r.sr} is below OE ${r.oeSr}.`, say: `${side}Speed rating ${r.sr} is below the original ${r.oeSr}.` });
     if (r.used) {
       const what = `Used tire${r.tread != null ? `, ${r.tread}/32″ tread` : ''}${r.dot ? `, DOT ${r.dot}` : ''}`;
