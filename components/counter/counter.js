@@ -105,9 +105,9 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
         : rims.reduce((a, b) => Math.abs(b.d - w.d) < Math.abs(a.d - w.d) ? b : a);
       const dW = w.w != null && ref.w != null ? +(w.w - ref.w).toFixed(1) : 0, dEt = w.et != null && ref.et != null ? w.et - ref.et : 0;
       if (Math.abs(dW) > 1) { st.wex.push({ w, why: `${sgn(dW)}″ wider than OE ${ref.d}×${ref.w}` }); continue; }
-      if (Math.abs(dEt) > 15) { st.wex.push({ w, why: `offset ${w.et} vs OE ${ref.et}` }); continue; }
+      if (Math.abs(dEt) > Math.max(15, fees.et)) { st.wex.push({ w, why: `offset ${w.et} vs OE ${ref.et}` }); continue; }
       const unknown = [w.w == null && 'width', w.et == null && 'offset', w.cb == null && 'bore'].filter(Boolean);
-      const ring = v.cb != null && w.cb != null && w.cb > v.cb + 0.05, minus = w.d < minD, plus = w.d > maxD, etWarn = Math.abs(dEt) > 7;
+      const ring = v.cb != null && w.cb != null && w.cb > v.cb + 0.05, minus = w.d < minD, plus = w.d > maxD, etWarn = Math.abs(dEt) > fees.et;   // within the shop's offset range = a normal fit
       const lug = !!(w.seat && v.seat && w.seat !== v.seat);
       const tire = same.length ? { key: ref.size, delta: 0 } : suggestTire(w.d, ref);
       // A bigger bore is a normal fit: hub-centric rings take up the gap and go on the quote automatically.
@@ -369,7 +369,7 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
       for (const w of list) {
         if (w.group !== last) {
           last = w.group;
-          html += w.group === 'direct' ? `<tr class="grp"><td colspan="9">Fits<span>bolt pattern matches, bore same or larger (rings added), OE diameter, offset within 7 mm</span></td></tr>`
+          html += w.group === 'direct' ? `<tr class="grp"><td colspan="9">Fits<span>bolt pattern matches, bore same or larger (rings added), OE diameter, offset within ${fees.et} mm</span></td></tr>`
             : `<tr class="grp"><td colspan="9">Fits with notes<span>plus/minus size, offset or width change, or missing specs</span></td></tr>`;
         }
         const notes = [];
@@ -562,10 +562,10 @@ export function startCounter({ data, api, log = () => {}, flush = () => {} }) {
   });
 
   // fee inputs
-  const FEE_IDS = { mount: 'f-mount', disp: 'f-disp', tpms: 'f-tpms', rings: 'f-rings', lugs: 'f-lugs', sensor: 'f-sensor', tax: 'f-tax', tol: 'f-tol' };
+  const FEE_IDS = { mount: 'f-mount', disp: 'f-disp', tpms: 'f-tpms', rings: 'f-rings', lugs: 'f-lugs', sensor: 'f-sensor', tax: 'f-tax', tol: 'f-tol', et: 'f-et' };
   for (const [k, id] of Object.entries(FEE_IDS)) {
     const inp = $(id); inp.value = fees[k];
-    on(inp, 'input', () => { const n = parseFloat(inp.value); if (isNaN(n) || n < 0) return; fees[k] = n; saveFees(); if (k === 'tol') { compute(); autoSelect(); renderStock(); } renderQuote(); });
+    on(inp, 'input', () => { const n = parseFloat(inp.value); if (isNaN(n) || n < 0) return; fees[k] = n; saveFees(); if (k === 'tol' || k === 'et') { compute(); autoSelect(); renderStock(); } renderQuote(); });
   }
   $('f-tpmsOn').checked = fees.tpmsOn;
   on($('f-tpmsOn'), 'change', e => { fees.tpmsOn = e.target.checked; saveFees(); renderQuote(); });

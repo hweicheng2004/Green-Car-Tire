@@ -63,6 +63,7 @@ export const COUNTER_MARKUP = `  <header class="bar">
           <label for="f-sensor">TPMS sensor / wheel</label><input type="number" id="f-sensor" step="0.5" min="0">
           <label for="f-tax">HST %</label><input type="number" id="f-tax" step="0.5" min="0">
           <label for="f-tol">Alternate diameter ± %</label><input type="number" id="f-tol" step="0.5" min="0.5" max="5">
+          <label for="f-et">Wheel offset ± mm (still a fit)</label><input type="number" id="f-et" step="1" min="0" max="30">
           <div class="feehint">TireConnect: open it, search 225/65R17, copy the address bar and paste it here. The counter swaps in each size. If the address has no size in it, the button opens TireConnect and copies the size to paste.</div>
           <div class="distrow"><label for="f-tc" style="font-weight:600">TireConnect</label><input id="f-tc" placeholder="Paste a TireConnect search address" aria-label="TireConnect search address"></div>
           <div class="feehint" id="f-tc-status"></div>

@@ -27,6 +27,7 @@ export type VehicleResult =
   | { none: true };
 export type Fees = {
   mount: number; disp: number; tpms: number; tpmsOn: boolean; tax: number; tol: number;
+  et: number;   // wheel offset difference from OE, in mm, that still counts as a normal fit
   rings: number; lugs: number; sensor: number; dist: { name: string; url: string }[];
   tc: string;   // TireConnect search address (or one pasted from a 225/65R17 search); '' = not set
 };
@@ -72,7 +73,7 @@ export function fitmentToCounter(f: Fitment, makeSlug: string, modelSlug: string
 }
 
 export const DEFAULT_FEES: Fees = {
-  mount: 20, disp: 5, tpms: 10, tpmsOn: false, tax: 13, tol: 3, rings: 25, lugs: 45, sensor: 65,
+  mount: 20, disp: 5, tpms: 10, tpmsOn: false, tax: 13, tol: 3, et: 13, rings: 25, lugs: 45, sensor: 65,
   dist: [{ name: '', url: '' }, { name: '', url: '' }, { name: '', url: '' }], tc: '',
 };
 
@@ -85,7 +86,7 @@ export function feesFromSettings(rows: { key: string; value: unknown }[], env: R
   if (/^https?:\/\//i.test(tcUrl.trim())) fees.tc = tcUrl.trim();
   const f = (rows.find(r => r.key === 'fees')?.value ?? {}) as Record<string, unknown>;
   const map: [keyof Fees, string][] = [['mount', 'mountBalance'], ['disp', 'disposal'], ['tpms', 'tpmsKit'], ['rings', 'hubRingsSet'],
-    ['lugs', 'lugSet'], ['sensor', 'tpmsSensor'], ['tax', 'taxPct'], ['tol', 'altTolerancePct']];
+    ['lugs', 'lugSet'], ['sensor', 'tpmsSensor'], ['tax', 'taxPct'], ['tol', 'altTolerancePct'], ['et', 'offsetToleranceMm']];
   for (const [k, s] of map) { const n = num(f[s]); if (n !== null && n >= 0) (fees[k] as number) = n; }
   const d = rows.find(r => r.key === 'distributors')?.value;
   if (Array.isArray(d)) {
