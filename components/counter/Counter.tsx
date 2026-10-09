@@ -38,6 +38,10 @@ export default function Counter({ data, error }: { data?: CounterInventory; erro
       <div className="setup">
         <div className="eyebrow">Couldn&apos;t load inventory</div>
         <p>{error ?? 'No data.'}</p>
+        <div className="acts">
+          <a className="primary" href="/">Try again</a>
+          <a href="/sync">Check the sheet sync</a>
+        </div>
       </div>
     </div>
   );
